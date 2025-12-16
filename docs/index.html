@@ -1,1 +1,32 @@
-a
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Germani Tabelas</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 24px; max-width: 900px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    a { text-decoration: none; }
+    code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Germani Tabelas</h1>
+  <div class="card">
+    <p><b>Status:</b> Front publicado no GitHub Pages. API no Cloudflare Worker.</p>
+    <p>Próximo passo: validar conectividade e operações básicas.</p>
+    <p><a href="./diagnostico.html">➡️ Abrir Diagnóstico da API</a></p>
+  </div>
+
+  <div class="card">
+    <h3>Arquitetura (fonte da verdade)</h3>
+    <ul>
+      <li><code>/docs</code> = produto publicado (GitHub Pages)</li>
+      <li><code>/worker</code> = API (Cloudflare Workers)</li>
+      <li><code>/migrations</code> = schema do banco (Turso) versionado</li>
+      <li><code>/.github/workflows</code> = pipeline (migrations automáticas)</li>
+    </ul>
+  </div>
+</body>
+</html>
