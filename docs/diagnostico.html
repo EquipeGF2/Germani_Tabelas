@@ -1,1 +1,112 @@
-a
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Diagnóstico API - Germani Tabelas</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 24px; max-width: 980px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    input { width: 520px; max-width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 10px; }
+    button { padding: 10px 14px; border: 1px solid #ccc; border-radius: 10px; cursor: pointer; }
+    pre { background: #0b1020; color: #d6e1ff; padding: 14px; border-radius: 12px; overflow: auto; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    .muted { color: #666; }
+    .ok { color: #0a7; font-weight: 600; }
+    .bad { color: #c22; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Diagnóstico da API (Cloudflare Worker)</h1>
+
+  <div class="card">
+    <div class="row" style="align-items:center;">
+      <div>
+        <div class="muted">URL base do Worker (ex.: https://tabelas.<subdominio>.workers.dev)</div>
+        <input id="apiBase" placeholder="https://tabelas.<subdominio>.workers.dev" />
+      </div>
+      <button id="btnSave">Salvar</button>
+    </div>
+    <div class="muted" style="margin-top:8px;">
+      Dica: a rota de health é <code>/health</code>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <button id="btnHealth">Testar /health</button>
+      <button id="btnListEmpresas">Listar empresas</button>
+      <button id="btnCreateEmpresa">Criar empresa (demo)</button>
+    </div>
+    <p id="status" class="muted"></p>
+    <pre id="out">{}</pre>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function getBase() {
+      return (localStorage.getItem("API_BASE") || "").replace(/\/+$/, "");
+    }
+    function setBase(v) {
+      localStorage.setItem("API_BASE", (v || "").replace(/\/+$/, ""));
+    }
+
+    $("apiBase").value = getBase();
+
+    $("btnSave").addEventListener("click", () => {
+      setBase($("apiBase").value.trim());
+      $("status").textContent = "✅ URL base salva.";
+      $("status").className = "ok";
+    });
+
+    async function callApi(path, opts = {}) {
+      const base = ($("apiBase").value || "").trim().replace(/\/+$/, "");
+      if (!base) throw new Error("Informe a URL base do Worker.");
+      const url = base + path;
+
+      const res = await fetch(url, {
+        ...opts,
+        headers: {
+          "content-type": "application/json",
+          ...(opts.headers || {})
+        }
+      });
+
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+      return { ok: res.ok, status: res.status, data };
+    }
+
+    function print(result) {
+      $("out").textContent = JSON.stringify(result, null, 2);
+      $("status").textContent = result.ok ? `✅ OK (${result.status})` : `❌ ERRO (${result.status})`;
+      $("status").className = result.ok ? "ok" : "bad";
+    }
+
+    $("btnHealth").addEventListener("click", async () => {
+      try { print(await callApi("/health")); }
+      catch (e) { print({ ok: false, status: 0, data: { error: e.message } }); }
+    });
+
+    $("btnListEmpresas").addEventListener("click", async () => {
+      try { print(await callApi("/v1/empresas")); }
+      catch (e) { print({ ok: false, status: 0, data: { error: e.message } }); }
+    });
+
+    $("btnCreateEmpresa").addEventListener("click", async () => {
+      try {
+        const nome = "Empresa Demo " + new Date().toISOString().slice(0, 19).replace("T", " ");
+        print(await callApi("/v1/empresas", {
+          method: "POST",
+          body: JSON.stringify({ nome })
+        }));
+      } catch (e) {
+        print({ ok: false, status: 0, data: { error: e.message } });
+      }
+    });
+  </script>
+</body>
+</html>
