@@ -1,0 +1,25 @@
+name: Turso - Apply Migrations
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "migrations/**"
+      - ".github/workflows/turso-migrate.yml"
+  workflow_dispatch: {}
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply migrations with Geni
+        uses: emilpriver/geni@main
+        with:
+          migrations_folder: "./migrations"
+          wait_timeout: "30"
+          migrations_table: "schema_migrations"
+          database_url: "${{ secrets.TURSO_DATABASE_HTTP_URL }}"
+          database_token: "${{ secrets.TURSO_DATABASE_TOKEN }}"
