@@ -1,1 +1,8 @@
-a
+{
+  "name": "tabelas-precos-api",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.55.0"
+  }
+}
