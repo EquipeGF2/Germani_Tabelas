@@ -2,31 +2,194 @@
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Germani Tabelas</title>
-  <style>
-    body { font-family: system-ui, Arial; margin: 24px; max-width: 900px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
-    a { text-decoration: none; }
-    code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Core Operacional</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-  <h1>Germani Tabelas</h1>
-  <div class="card">
-    <p><b>Status:</b> Front publicado no GitHub Pages. API no Cloudflare Worker.</p>
-    <p>Próximo passo: validar conectividade e operações básicas.</p>
-    <p><a href="./diagnostico.html">➡️ Abrir Diagnóstico da API</a></p>
+  <header>
+    <h1>Sistema Core (multiempresa)</h1>
+    <div class="input-row" style="align-items:center; margin:0;">
+      <label style="min-width:240px;">
+        <span>Endpoint da API (Cloudflare Worker)</span>
+        <input id="apiBase" type="url" placeholder="https://worker.exemplo.dev" />
+      </label>
+      <button class="button" id="carregarEmpresas">Carregar empresas</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="notice" id="statusBar">Pronto para começar. Selecione a empresa para ativar o contexto.</div>
+
+    <section>
+      <header>
+        <h2>Empresas</h2>
+        <button class="help-btn" data-ajuda="empresas">Ajuda (?)</button>
+      </header>
+      <form id="empresaForm" class="input-row" style="margin-top:12px;">
+        <label><span>Nova empresa</span><input id="empresaNome" required placeholder="Nome" /></label>
+        <button class="button" type="submit">Criar</button>
+      </form>
+      <div class="card-list" id="empresasGrid" style="margin-top:12px;"></div>
+    </section>
+
+    <section>
+      <header>
+        <h2>Produtos</h2>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="help-btn" data-ajuda="produtos">Ajuda (?)</button>
+          <button class="help-btn" data-ajuda="importacao-produtos">Importação</button>
+        </div>
+      </header>
+      <form id="produtoForm" class="input-row" style="margin-top:12px;">
+        <input type="hidden" id="produtoId" />
+        <label><span>SKU</span><input id="produtoSku" required /></label>
+        <label><span>Descrição</span><input id="produtoDesc" required /></label>
+        <label><span>Unidade</span><input id="produtoUnd" value="UN" /></label>
+        <label><span>Família</span><input id="produtoFamilia" /></label>
+        <label><span>Grupo preço</span><input id="produtoGrupo" type="number" min="1" value="1" /></label>
+        <label><span>Pallet formato</span><input id="produtoPallet" placeholder="04x05" /></label>
+        <label><span>Pallet caixas</span><input id="produtoPalletCaixas" type="number" /></label>
+        <label><span>EAN13</span><input id="produtoEAN13" /></label>
+        <label><span>EAN14 caixa</span><input id="produtoEAN14" /></label>
+        <label><span>Peso padrão (kg)</span><input id="produtoPeso" type="number" step="0.01" /></label>
+        <label><span>Apresentação</span><input id="produtoApresentacao" /></label>
+        <label><span>Cubagem m³</span><input id="produtoCubagem" type="number" step="0.0001" /></label>
+        <label><span>Peso líquido kg</span><input id="produtoPesoLiq" type="number" step="0.01" /></label>
+        <label><span>Peso bruto kg</span><input id="produtoPesoBruto" type="number" step="0.01" /></label>
+        <label><span>Categoria preço base</span><input id="produtoCategoriaPreco" /></label>
+        <label style="flex:0 0 150px;align-items:center;"><span>Ativo</span><input id="produtoAtivo" type="checkbox" checked /></label>
+        <label style="flex:0 0 150px;align-items:center;"><span>Referência família</span><input id="produtoRef" type="checkbox" /></label>
+        <button class="button" type="submit">Salvar produto</button>
+      </form>
+
+      <div class="notice" style="margin-top:12px;">
+        Importação rápida: cole CSV ou planilha (campos variam conforme template). Escolha o template e envie.
+        <div class="input-row" style="margin-top:8px;">
+          <label style="flex:0 0 200px;">
+            <span>Template</span>
+            <select id="templateSelect">
+              <option value="DALLAS_PRODUTOS">DALLAS_PRODUTOS</option>
+              <option value="GERMANI_PRODUTOS">GERMANI_PRODUTOS</option>
+              <option value="DALLAS_LOGISTICA">DALLAS_LOGISTICA</option>
+            </select>
+          </label>
+          <button class="button secondary" id="importBtn" type="button">Importar</button>
+        </div>
+        <textarea id="importArea" placeholder="Cabeçalho;Colunas"></textarea>
+      </div>
+
+      <table class="table">
+        <thead><tr><th>SKU</th><th>Descrição</th><th>Un</th><th>Pallet</th><th>Caixas</th></tr></thead>
+        <tbody id="produtosBody"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <header>
+        <h2>Categorias NCM (Dallas)</h2>
+        <button class="help-btn" data-ajuda="ncm">Ajuda (?)</button>
+      </header>
+      <form id="ncmForm" class="input-row" style="margin-top:12px;">
+        <label><span>Nome</span><input id="ncmNome" required /></label>
+        <label><span>NCM</span><input id="ncmCodigo" required /></label>
+        <button class="button" type="submit">Adicionar</button>
+        <button class="button secondary" id="ncmSeed" type="button">Seed Dallas</button>
+      </form>
+      <ul id="ncmList"></ul>
+    </section>
+
+    <section>
+      <header>
+        <h2>ST (matriz)</h2>
+        <button class="help-btn" data-ajuda="st">Ajuda (?)</button>
+      </header>
+      <form id="stForm" class="input-row" style="margin-top:12px;">
+        <input type="hidden" id="stId" />
+        <label><span>Destino</span><select id="stDestino"></select></label>
+        <label><span>Operação</span><select id="stOperacao"><option>INTERNA</option><option>INTERESTADUAL</option></select></label>
+        <label style="flex:0 0 160px;align-items:center;"><span>Tem ST?</span><input type="checkbox" id="stTem" /></label>
+        <label><span>Variantes JSON</span><input id="stVariantes" placeholder='{"simples":true}' /></label>
+        <label><span>Parâmetros JSON</span><input id="stParametros" placeholder='{"base":"00"}' /></label>
+        <button class="button" type="submit">Salvar</button>
+      </form>
+      <table class="table">
+        <thead><tr><th>Destino</th><th>Operação</th><th>ST?</th></tr></thead>
+        <tbody id="stBody"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <header>
+        <h2>Custos logísticos</h2>
+        <button class="help-btn" data-ajuda="custos-logisticos">Ajuda (?)</button>
+      </header>
+      <form id="custoForm" class="input-row" style="margin-top:12px;">
+        <input type="hidden" id="custoId" />
+        <label><span>Destino</span><select id="custoDestino"></select></label>
+        <label><span>Operação</span><select id="custoOperacao"><option>INTERNA</option><option>INTERESTADUAL</option></select></label>
+        <label><span>Tipo custo</span><input id="custoTipo" value="PALETIZACAO" /></label>
+        <label><span>Valor</span><input id="custoValor" type="number" step="0.01" /></label>
+        <label><span>Unidade</span><input id="custoUnidade" value="POR_PALLET" /></label>
+        <label><span>Filtro (JSON)</span><input id="custoFiltro" placeholder='{"grupo_preco":[1,2]}' /></label>
+        <button class="button" type="submit">Salvar</button>
+      </form>
+      <table class="table">
+        <thead><tr><th>Destino</th><th>Tipo</th><th>Valor</th><th>Unidade</th></tr></thead>
+        <tbody id="custoBody"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <header>
+        <h2>Pauta MS interna</h2>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="help-btn" data-ajuda="pauta-ms">Ajuda (?)</button>
+        </div>
+      </header>
+      <form id="pautaForm" class="input-row" style="margin-top:12px;">
+        <input type="hidden" id="pautaId" />
+        <label><span>Destino</span><select id="pautaDestino"><option value="MS">MS</option></select></label>
+        <label><span>Operação</span><select id="pautaOperacao"><option>INTERNA</option></select></label>
+        <label><span>Produto</span><input id="pautaProduto" list="produtosLista" placeholder="cole o ID" /></label>
+        <label><span>Tipo</span><select id="pautaTipo"><option>PRECO</option><option>PERCENTUAL</option><option>FORMULA_ESPECIAL</option></select></label>
+        <label><span>Pauta preço</span><input id="pautaPreco" type="number" step="0.01" /></label>
+        <label><span>% Aplicação</span><input id="pautaAplicacao" type="number" step="0.01" /></label>
+        <label><span>Pauta %</span><input id="pautaPercentual" type="number" step="0.01" /></label>
+        <label><span>MVA %</span><input id="pautaMva" type="number" step="0.01" /></label>
+        <label><span>Alíquota %</span><input id="pautaAliquota" type="number" step="0.01" /></label>
+        <button class="button" type="submit">Salvar</button>
+      </form>
+      <datalist id="produtosLista"></datalist>
+      <table class="table">
+        <thead><tr><th>SKU</th><th>Tipo</th><th>Valor</th></tr></thead>
+        <tbody id="pautaBody"></tbody>
+      </table>
+      <div class="notice" style="margin-top:12px;">
+        <h4>Simulador de fórmula especial</h4>
+        <form id="simForm" class="input-row">
+          <label><span>Preço tabela</span><input id="simPreco" type="number" step="0.01" value="0" /></label>
+          <label><span>MVA %</span><input id="simMva" type="number" step="0.01" value="0" /></label>
+          <label><span>Alíquota %</span><input id="simAliq" type="number" step="0.01" value="0" /></label>
+          <div class="notice" style="flex:1 1 120px;">Pauta calculada: <strong id="simResultado">0.00</strong></div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div class="footer">Core operacional preparado para GitHub Pages + Cloudflare Worker.</div>
+
+  <div class="modal-backdrop" id="ajudaModal">
+    <div class="modal">
+      <header>
+        <h3>Ajuda</h3>
+        <button class="button secondary" id="ajudaFechar" type="button">Fechar</button>
+      </header>
+      <div id="ajudaConteudo" style="margin-top:12px;"></div>
+    </div>
   </div>
 
-  <div class="card">
-    <h3>Arquitetura (fonte da verdade)</h3>
-    <ul>
-      <li><code>/docs</code> = produto publicado (GitHub Pages)</li>
-      <li><code>/worker</code> = API (Cloudflare Workers)</li>
-      <li><code>/migrations</code> = schema do banco (Turso) versionado</li>
-      <li><code>/.github/workflows</code> = pipeline (migrations automáticas)</li>
-    </ul>
-  </div>
+  <script src="./app.js"></script>
 </body>
 </html>
