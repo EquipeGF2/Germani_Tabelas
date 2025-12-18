@@ -20,44 +20,27 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
 header h1 { margin: 0; font-size: 20px; }
+header .brand { display: flex; flex-direction: column; gap: 4px; }
+.muted { color: #6b7280; }
 
-.config-bar {
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 12px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.config-bar__controls {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 12px;
-  align-items: center;
-}
-
-.config-bar__label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.status {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
   font-size: 14px;
-}
-
-.config-bar__actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  min-width: 200px;
 }
 
 main {
   padding: 24px;
   max-width: 1200px;
   margin: 0 auto 64px;
+  width: 100%;
 }
 
 .tabs {
@@ -80,6 +63,7 @@ main {
   padding: 10px 12px;
   cursor: pointer;
   transition: all .12s ease;
+  width: 100%;
 }
 
 .tab-link.active {
@@ -108,12 +92,10 @@ section header {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
-section header h2 {
-  margin: 0;
-  font-size: 18px;
-}
+section header h2 { margin: 0; font-size: 18px; }
 
 button, input, select, textarea {
   font: inherit;
@@ -127,7 +109,7 @@ button, input, select, textarea {
   color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   cursor: pointer;
   transition: transform .05s ease, box-shadow .15s ease;
 }
@@ -140,17 +122,13 @@ button, input, select, textarea {
   color: #111;
 }
 
-.grid {
-  display: grid;
-  gap: 12px;
-}
-
+.grid { display: grid; gap: 12px; }
 .grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 
 .card-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
@@ -161,6 +139,9 @@ button, input, select, textarea {
   background: #fff;
   cursor: pointer;
   transition: border-color .1s ease, box-shadow .1s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .card.selected {
@@ -185,21 +166,20 @@ small.muted { color: #6b7280; }
 .table th { background: #f8fafc; text-align: left; }
 
 .input-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .input-row label {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1 1 140px;
   font-size: 13px;
 }
 
 input, select, textarea {
-  padding: 8px;
+  padding: 10px 8px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
   background: #fff;
@@ -269,10 +249,38 @@ textarea { min-height: 120px; }
 
 .modal h3 { margin: 0; }
 
+.empresa-gate {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 40;
+}
+
+body.gate-open .empresa-gate { display: flex; }
+body.gate-open main { filter: blur(2px); pointer-events: none; }
+
+.gate-panel {
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  max-width: 860px;
+  width: 100%;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gate-list .card { flex-direction: row; align-items: center; justify-content: space-between; }
+
+.gate-form { align-items: flex-end; }
+
 @media (max-width: 720px) {
-  header { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .config-bar__controls { grid-template-columns: 1fr; }
-  .config-bar__actions { justify-content: flex-start; }
+  header { flex-direction: column; align-items: flex-start; }
   .tab-link { text-align: left; }
-  .input-row label { flex: 1 1 100%; }
+  .gate-list .card { flex-direction: column; align-items: flex-start; }
 }

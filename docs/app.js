@@ -8,6 +8,7 @@ const state = {
   custos: [],
   pauta: [],
   destinos: [],
+  tabsCarregados: new Set(),
 };
 
 const dom = (id) => document.getElementById(id);
@@ -16,29 +17,21 @@ function setStatus(msg, isError = false) {
   const el = dom("statusBar");
   if (!el) return;
   el.textContent = msg;
-  el.style.color = isError ? "#b91c1c" : "inherit";
+  el.style.color = isError ? "#ffd7d7" : "#fff";
+}
+
+function normalizeBaseUrl(valor) {
+  let v = (valor || "").trim();
+  if (!v) return "";
+  if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
+  v = v.replace(/^http:\/\//i, "https://");
+  return v.replace(/\/$/, "");
 }
 
 function getApiBaseUrl() {
-  const atual = (state.apiBase || "").trim();
-  if (atual) return atual;
-
-  const salvo = (localStorage.getItem("apiBase") || "").trim();
-  if (salvo) {
-    state.apiBase = salvo;
-    return salvo;
-  }
-
-  const vindoDoConfig = (window.APP_CONFIG?.API_BASE_URL || "").trim();
-  if (vindoDoConfig) state.apiBase = vindoDoConfig;
+  const vindoDoConfig = normalizeBaseUrl(window.APP_CONFIG?.API_BASE_URL || "");
+  state.apiBase = vindoDoConfig;
   return vindoDoConfig;
-}
-
-function setApiBaseUrl(valor) {
-  const normalizado = (valor || "").trim();
-  state.apiBase = normalizado;
-  localStorage.setItem("apiBase", normalizado);
-  return normalizado;
 }
 
 function applyTema(temaJson) {
@@ -54,7 +47,7 @@ function applyTema(temaJson) {
 
 async function api(path, options = {}) {
   const base = getApiBaseUrl();
-  if (!base) throw new Error("Configure a URL da API antes de continuar.");
+  if (!base) throw new Error("URL base da API não configurada em window.APP_CONFIG.");
   const urlBase = base.replace(/\/$/, "");
   let res;
   try {
@@ -64,7 +57,7 @@ async function api(path, options = {}) {
     });
   } catch (err) {
     console.error(err);
-    throw new Error("Não foi possível conectar à API. Confira o endpoint e sua conexão.");
+    throw new Error("Não foi possível conectar à API. Confira a rede ou o Worker.");
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -73,14 +66,51 @@ async function api(path, options = {}) {
   return res.json();
 }
 
+function empresaObrigatoria() {
+  if (!state.empresaSelecionada) {
+    abrirGate();
+    setStatus("Selecione uma empresa para continuar.", true);
+    return false;
+  }
+  return true;
+}
+
 async function carregarEmpresas() {
   const data = await api(`/v1/empresas`);
   state.empresas = data.empresas || [];
-  renderEmpresas();
+  renderEmpresasTab();
+  renderGateEmpresas();
 }
 
-function renderEmpresas() {
+function renderGateEmpresas() {
+  const wrap = dom("empresaGateLista");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  if (!state.empresas.length) {
+    wrap.innerHTML = '<div class="notice">Nenhuma empresa cadastrada ainda.</div>';
+    return;
+  }
+  state.empresas.forEach((empresa) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div style="display:flex;gap:10px;align-items:center;">
+        ${empresa.logo_url ? `<img src="${empresa.logo_url}" alt="logo" style="width:40px;height:40px;object-fit:contain;" />` : ""}
+        <div>
+          <div><strong>${empresa.nome}</strong></div>
+          <small class="muted">${empresa.id}</small>
+        </div>
+      </div>
+      <button class="button" type="button">Selecionar</button>
+    `;
+    card.querySelector("button").onclick = () => selecionarEmpresa(empresa.id);
+    wrap.appendChild(card);
+  });
+}
+
+function renderEmpresasTab() {
   const wrap = dom("empresasGrid");
+  if (!wrap) return;
   wrap.innerHTML = "";
   state.empresas.forEach((empresa) => {
     const card = document.createElement("div");
@@ -94,32 +124,53 @@ function renderEmpresas() {
         </div>
       </div>
     `;
-    card.onclick = () => {
-      state.empresaSelecionada = empresa;
-      localStorage.setItem("empresaSelecionada", empresa.id);
-      applyTema(empresa.tema_json);
-      renderEmpresas();
-      refreshTudo();
-    };
+    card.onclick = () => selecionarEmpresa(empresa.id);
     wrap.appendChild(card);
   });
 }
 
-async function salvarEmpresa() {
-  const nome = dom("empresaNome").value.trim();
+async function selecionarEmpresa(id) {
+  const empresa = state.empresas.find((e) => e.id === id);
+  if (!empresa) return;
+  state.empresaSelecionada = empresa;
+  localStorage.setItem("empresaSelecionada", id);
+  applyTema(empresa.tema_json);
+  fecharGate();
+  setStatus(`Empresa ativa: ${empresa.nome}`);
+  state.tabsCarregados.clear();
+  const ativa = document.querySelector(".tab-link.active")?.dataset.tabTarget;
+  if (ativa) await carregarTab(ativa);
+}
+
+async function salvarEmpresa(formId = "empresaForm") {
+  const inputId = formId === "empresaGateForm" ? "empresaNomeGate" : "empresaNome";
+  const nomeEl = dom(inputId);
+  const nome = nomeEl?.value.trim();
   if (!nome) return setStatus("Informe o nome da empresa.", true);
   await api(`/v1/empresas`, { method: "POST", body: JSON.stringify({ nome }) });
-  dom("empresaNome").value = "";
+  if (nomeEl) nomeEl.value = "";
   setStatus("Empresa criada.");
   await carregarEmpresas();
 }
 
-function empresaObrigatoria() {
-  if (!state.empresaSelecionada) {
-    setStatus("Selecione uma empresa primeiro.", true);
-    return false;
+function restaurarEmpresaSelecionada() {
+  const saved = localStorage.getItem("empresaSelecionada");
+  if (!saved) return;
+  const empresa = state.empresas.find((e) => e.id === saved);
+  if (empresa) {
+    state.empresaSelecionada = empresa;
+    applyTema(empresa.tema_json);
+    fecharGate();
+    setStatus(`Empresa ativa: ${empresa.nome}`);
   }
-  return true;
+}
+
+function abrirGate() {
+  document.body.classList.add("gate-open");
+}
+
+function fecharGate() {
+  document.body.classList.remove("gate-open");
 }
 
 async function carregarProdutos() {
@@ -130,7 +181,7 @@ async function carregarProdutos() {
 }
 
 function preencherProdutoForm(prod = null) {
-  const fields = ["produtoId","produtoSku","produtoDesc","produtoUnd","produtoFamilia","produtoGrupo","produtoPallet","produtoPalletCaixas","produtoEAN13","produtoEAN14","produtoAtivo","produtoRef","produtoPeso","produtoApresentacao","produtoCubagem","produtoPesoLiq","produtoPesoBruto","produtoCategoriaPreco"];
+  const fields = ["produtoId","produtoSku","produtoDesc","produtoUnd","produtoFamilia","produtoGrupo","produtoPallet","produtoPalletCaixas","produtoEAN13","produtoEAN14","produtoPeso","produtoApresentacao","produtoCubagem","produtoPesoLiq","produtoPesoBruto","produtoCategoriaPreco"];
   fields.forEach((f) => { dom(f).value = prod ? (prod[mapeiaForm(f)] ?? "") : ""; });
   dom("produtoAtivo").checked = prod ? prod.ativo === 1 || prod.ativo === true : true;
   dom("produtoRef").checked = prod ? prod.ref_familia === 1 : false;
@@ -465,15 +516,36 @@ function fecharAjuda() {
   dom("ajudaModal").style.display = "none";
 }
 
-async function refreshTudo() {
-  if (!state.empresaSelecionada) return;
-  await Promise.all([
-    carregarProdutos(),
-    carregarNcm(),
-    carregarSt(),
-    carregarCustos(),
-    carregarPauta(),
-  ]);
+async function carregarTab(tabId) {
+  if (!state.empresaSelecionada && tabId !== "tab-empresas") {
+    abrirGate();
+    return;
+  }
+  switch (tabId) {
+    case "tab-empresas":
+      renderEmpresasTab();
+      break;
+    case "tab-produtos":
+      await carregarProdutos();
+      break;
+    case "tab-ncm":
+      await carregarNcm();
+      break;
+    case "tab-st":
+      if (!state.destinos.length) await carregarDestinos();
+      await carregarSt();
+      break;
+    case "tab-custos":
+      if (!state.destinos.length) await carregarDestinos();
+      await carregarCustos();
+      break;
+    case "tab-pauta":
+      if (!state.destinos.length) await carregarDestinos();
+      if (!state.produtos.length) await carregarProdutos();
+      await carregarPauta();
+      break;
+  }
+  state.tabsCarregados.add(tabId);
 }
 
 function setupTabs() {
@@ -491,35 +563,24 @@ function setupTabs() {
   };
 
   tabs.forEach((btn) => {
-    btn.addEventListener("click", () => ativar(btn.dataset.tabTarget));
+    btn.addEventListener("click", async () => {
+      const alvo = btn.dataset.tabTarget;
+      ativar(alvo);
+      try {
+        await carregarTab(alvo);
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    });
   });
 
   ativar(tabs[0].dataset.tabTarget);
 }
 
-function restaurarEmpresaSelecionada() {
-  const saved = localStorage.getItem("empresaSelecionada");
-  if (saved) {
-    const empresa = state.empresas.find((e) => e.id === saved);
-    if (empresa) {
-      state.empresaSelecionada = empresa;
-      applyTema(empresa.tema_json);
-    }
-  }
-}
-
-function init() {
-  state.apiBase = getApiBaseUrl();
-  dom("apiBase").value = state.apiBase;
-  dom("apiBase").addEventListener("change", (e) => {
-    const salvo = setApiBaseUrl(e.target.value);
-    setStatus(salvo ? "Endpoint salvo. Clique em 'Carregar empresas'." : "Informe um endpoint válido.", !salvo);
-  });
-  dom("salvarApiBase").addEventListener("click", () => {
-    const salvo = setApiBaseUrl(dom("apiBase").value);
-    setStatus(salvo ? "Endpoint salvo. Clique em 'Carregar empresas'." : "Informe um endpoint válido.", !salvo);
-  });
+function bindFormListeners() {
   dom("empresaForm").addEventListener("submit", (e) => { e.preventDefault(); salvarEmpresa(); });
+  dom("empresaGateForm").addEventListener("submit", (e) => { e.preventDefault(); salvarEmpresa("empresaGateForm"); });
+  dom("gateAtualizar").addEventListener("click", () => carregarEmpresas().catch((err) => setStatus(err.message, true)));
   dom("produtoForm").addEventListener("submit", (e) => { e.preventDefault(); salvarProduto(); });
   dom("importBtn").addEventListener("click", importarProdutos);
   dom("ncmForm").addEventListener("submit", (e) => { e.preventDefault(); salvarNcm(); });
@@ -529,30 +590,38 @@ function init() {
   dom("pautaForm").addEventListener("submit", (e) => { e.preventDefault(); salvarPauta(); });
   dom("simForm").addEventListener("input", simularFormula);
   dom("ajudaFechar").addEventListener("click", fecharAjuda);
-  dom("carregarEmpresas").addEventListener("click", async () => {
-    try {
-      if (!getApiBaseUrl()) return setStatus("Informe o endpoint da API antes de carregar.", true);
-      await carregarDestinos();
-      await carregarEmpresas();
-      restaurarEmpresaSelecionada();
-      renderEmpresas();
-      await refreshTudo();
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-  });
+}
+
+async function init() {
+  state.apiBase = getApiBaseUrl();
+  if (!state.apiBase) {
+    setStatus("Configure window.APP_CONFIG.API_BASE_URL para usar a aplicação.", true);
+    abrirGate();
+    return;
+  }
+
+  setStatus("Carregando empresas...");
+  bindFormListeners();
   bindAjudaButtons();
   setupTabs();
-
-  if (getApiBaseUrl()) {
-    setStatus("Carregando dados iniciais...");
-    Promise.all([carregarDestinos(), carregarEmpresas()])
-      .then(() => { restaurarEmpresaSelecionada(); renderEmpresas(); refreshTudo(); })
-      .catch((err) => setStatus(err.message, true));
-  }
   preencherProdutoForm();
   preencherCustoForm();
   preencherStForm();
+  preencherPautaForm();
+
+  try {
+    await carregarEmpresas();
+    restaurarEmpresaSelecionada();
+    if (state.empresaSelecionada) {
+      const ativa = document.querySelector(".tab-link.active")?.dataset.tabTarget;
+      if (ativa) await carregarTab(ativa);
+    } else {
+      abrirGate();
+    }
+  } catch (err) {
+    setStatus(err.message, true);
+    abrirGate();
+  }
 }
 
 document.addEventListener("DOMContentLoaded", init);

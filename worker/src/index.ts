@@ -47,16 +47,14 @@ function corsHeaders(request: Request, env: Env): HeadersInit {
   const origin = request.headers.get("Origin") || "";
   const allowed = parseAllowedOrigins(env);
 
+  const isAllowedOrigin = allowed.length === 0 || allowed.includes(origin);
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
+    "Access-Control-Allow-Origin": isAllowedOrigin && origin ? origin : "*",
     "Vary": "Origin",
   };
-
-  if (origin && allowed.includes(origin)) {
-    headers["Access-Control-Allow-Origin"] = origin;
-  }
 
   return headers;
 }
