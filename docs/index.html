@@ -5,203 +5,288 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Core Operacional</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="./config.js"></script>
 </head>
 <body class="gate-open">
-  <header>
+  <header class="app-header">
     <div class="brand">
-      <h1>Sistema Core (multiempresa)</h1>
-      <p class="muted">GitHub Pages + Cloudflare Worker</p>
+      <div class="brand-mark">G</div>
+      <div>
+        <p class="muted">Germani • Cloudflare Worker</p>
+        <h1>Core operacional multiempresa</h1>
+        <div id="statusBar" class="muted" aria-live="polite">Preparando ambiente...</div>
+      </div>
     </div>
-    <div class="status" id="statusBar">Carregando empresas...</div>
+    <div class="header-actions">
+      <div class="empresa-info" aria-live="polite">
+        <span class="label">Empresa ativa</span>
+        <span class="value" id="empresaAtivaNome">Nenhuma selecionada</span>
+      </div>
+      <div class="api-status">
+        <span class="badge loading" id="apiStatusBadge">Sincronizando API...</span>
+        <button class="link-button" id="apiStatusDetalhes" type="button" style="display:none;">Ver detalhes</button>
+      </div>
+    </div>
   </header>
 
-  <div class="empresa-gate" id="empresaGate">
-    <div class="gate-panel">
-      <h2>Selecione a empresa para continuar</h2>
-      <p class="muted">A escolha é obrigatória para liberar as abas de gestão.</p>
-      <div id="empresaLista">
-        <div class="gate-message" id="empresaGateMensagem"></div>
-        <div class="card-list gate-list" id="empresaGateLista"></div>
-      </div>
-      <form id="empresaGateForm" class="input-row gate-form">
-        <label>
-          <span>Nova empresa</span>
-          <input id="empresaNomeGate" required placeholder="Nome da empresa" />
-        </label>
-        <button class="button" type="submit">Criar e adicionar</button>
-        <button class="button secondary" type="button" id="gateAtualizar">Atualizar lista</button>
-      </form>
+  <div class="nav-mobile">
+    <div class="tabs-nav" aria-label="Navegação principal (mobile)">
+      <button class="tab-link active" type="button" data-tab-target="tab-empresas">Empresas</button>
+      <button class="tab-link" type="button" data-tab-target="tab-produtos">Produtos</button>
+      <button class="tab-link" type="button" data-tab-target="tab-ncm">NCM</button>
+      <button class="tab-link" type="button" data-tab-target="tab-st">ST</button>
+      <button class="tab-link" type="button" data-tab-target="tab-custos">Custos</button>
+      <button class="tab-link" type="button" data-tab-target="tab-pauta">Pauta</button>
     </div>
   </div>
 
-  <main class="tabs" id="appShell" aria-live="polite">
-    <nav class="tabs-nav" aria-label="Navegação principal">
-      <button class="tab-link active" type="button" data-tab-target="tab-empresas">Empresas</button>
-      <button class="tab-link" type="button" data-tab-target="tab-produtos">Produtos</button>
-      <button class="tab-link" type="button" data-tab-target="tab-ncm">Categorias NCM</button>
-      <button class="tab-link" type="button" data-tab-target="tab-st">ST</button>
-      <button class="tab-link" type="button" data-tab-target="tab-custos">Custos logísticos</button>
-      <button class="tab-link" type="button" data-tab-target="tab-pauta">Pauta MS</button>
-    </nav>
-
-    <section class="tab-pane active" id="tab-empresas">
-      <header>
-        <h2>Empresas</h2>
-        <button class="help-btn" data-ajuda="empresas">Ajuda (?)</button>
-      </header>
-      <form id="empresaForm" class="input-row" style="margin-top:12px;">
-        <label><span>Nova empresa</span><input id="empresaNome" required placeholder="Nome" /></label>
-        <button class="button" type="submit">Criar</button>
-      </form>
-      <div class="card-list" id="empresasGrid" style="margin-top:12px;"></div>
-    </section>
-
-    <section class="tab-pane" id="tab-produtos">
-      <header>
-        <h2>Produtos</h2>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button class="help-btn" data-ajuda="produtos">Ajuda (?)</button>
-          <button class="help-btn" data-ajuda="importacao-produtos">Importação</button>
-        </div>
-      </header>
-      <form id="produtoForm" class="input-row" style="margin-top:12px;">
-        <input type="hidden" id="produtoId" />
-        <label><span>SKU</span><input id="produtoSku" required /></label>
-        <label><span>Descrição</span><input id="produtoDesc" required /></label>
-        <label><span>Unidade</span><input id="produtoUnd" value="UN" /></label>
-        <label><span>Família</span><input id="produtoFamilia" /></label>
-        <label><span>Grupo preço</span><input id="produtoGrupo" type="number" min="1" value="1" /></label>
-        <label><span>Pallet formato</span><input id="produtoPallet" placeholder="04x05" /></label>
-        <label><span>Pallet caixas</span><input id="produtoPalletCaixas" type="number" /></label>
-        <label><span>EAN13</span><input id="produtoEAN13" /></label>
-        <label><span>EAN14 caixa</span><input id="produtoEAN14" /></label>
-        <label><span>Peso padrão (kg)</span><input id="produtoPeso" type="number" step="0.01" /></label>
-        <label><span>Apresentação</span><input id="produtoApresentacao" /></label>
-        <label><span>Cubagem m³</span><input id="produtoCubagem" type="number" step="0.0001" /></label>
-        <label><span>Peso líquido kg</span><input id="produtoPesoLiq" type="number" step="0.01" /></label>
-        <label><span>Peso bruto kg</span><input id="produtoPesoBruto" type="number" step="0.01" /></label>
-        <label><span>Categoria preço base</span><input id="produtoCategoriaPreco" /></label>
-        <label style="flex:0 0 150px;align-items:center;"><span>Ativo</span><input id="produtoAtivo" type="checkbox" checked /></label>
-        <label style="flex:0 0 150px;align-items:center;"><span>Referência família</span><input id="produtoRef" type="checkbox" /></label>
-        <button class="button" type="submit">Salvar produto</button>
-      </form>
-
-      <div class="notice" style="margin-top:12px;">
-        Importação rápida: cole CSV ou planilha (campos variam conforme template). Escolha o template e envie.
-        <div class="input-row" style="margin-top:8px;">
-          <label style="flex:0 0 200px;">
-            <span>Template</span>
-            <select id="templateSelect">
-              <option value="DALLAS_PRODUTOS">DALLAS_PRODUTOS</option>
-              <option value="GERMANI_PRODUTOS">GERMANI_PRODUTOS</option>
-              <option value="DALLAS_LOGISTICA">DALLAS_LOGISTICA</option>
-            </select>
-          </label>
-          <button class="button secondary" id="importBtn" type="button">Importar</button>
-        </div>
-        <textarea id="importArea" placeholder="Cabeçalho;Colunas"></textarea>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navegação principal">
+      <div class="nav-title">Áreas</div>
+      <div class="tabs-nav">
+        <button class="tab-link active" type="button" data-tab-target="tab-empresas">Empresas</button>
+        <button class="tab-link" type="button" data-tab-target="tab-produtos">Produtos</button>
+        <button class="tab-link" type="button" data-tab-target="tab-ncm">Categorias NCM</button>
+        <button class="tab-link" type="button" data-tab-target="tab-st">ST</button>
+        <button class="tab-link" type="button" data-tab-target="tab-custos">Custos logísticos</button>
+        <button class="tab-link" type="button" data-tab-target="tab-pauta">Pauta MS</button>
       </div>
+    </aside>
 
-      <table class="table">
-        <thead><tr><th>SKU</th><th>Descrição</th><th>Un</th><th>Pallet</th><th>Caixas</th></tr></thead>
-        <tbody id="produtosBody"></tbody>
-      </table>
-    </section>
-
-    <section class="tab-pane" id="tab-ncm">
-      <header>
-        <h2>Categorias NCM (Dallas)</h2>
-        <button class="help-btn" data-ajuda="ncm">Ajuda (?)</button>
-      </header>
-      <form id="ncmForm" class="input-row" style="margin-top:12px;">
-        <label><span>Nome</span><input id="ncmNome" required /></label>
-        <label><span>NCM</span><input id="ncmCodigo" required /></label>
-        <button class="button" type="submit">Adicionar</button>
-        <button class="button secondary" id="ncmSeed" type="button">Seed Dallas</button>
-      </form>
-      <ul id="ncmList"></ul>
-    </section>
-
-    <section class="tab-pane" id="tab-st">
-      <header>
-        <h2>ST (matriz)</h2>
-        <button class="help-btn" data-ajuda="st">Ajuda (?)</button>
-      </header>
-      <form id="stForm" class="input-row" style="margin-top:12px;">
-        <input type="hidden" id="stId" />
-        <label><span>Destino</span><select id="stDestino"></select></label>
-        <label><span>Operação</span><select id="stOperacao"><option>INTERNA</option><option>INTERESTADUAL</option></select></label>
-        <label style="flex:0 0 160px;align-items:center;"><span>Tem ST?</span><input type="checkbox" id="stTem" /></label>
-        <label><span>Variantes JSON</span><input id="stVariantes" placeholder='{"simples":true}' /></label>
-        <label><span>Parâmetros JSON</span><input id="stParametros" placeholder='{"base":"00"}' /></label>
-        <button class="button" type="submit">Salvar</button>
-      </form>
-      <table class="table">
-        <thead><tr><th>Destino</th><th>Operação</th><th>ST?</th></tr></thead>
-        <tbody id="stBody"></tbody>
-      </table>
-    </section>
-
-    <section class="tab-pane" id="tab-custos">
-      <header>
-        <h2>Custos logísticos</h2>
-        <button class="help-btn" data-ajuda="custos-logisticos">Ajuda (?)</button>
-      </header>
-      <form id="custoForm" class="input-row" style="margin-top:12px;">
-        <input type="hidden" id="custoId" />
-        <label><span>Destino</span><select id="custoDestino"></select></label>
-        <label><span>Operação</span><select id="custoOperacao"><option>INTERNA</option><option>INTERESTADUAL</option></select></label>
-        <label><span>Tipo custo</span><input id="custoTipo" value="PALETIZACAO" /></label>
-        <label><span>Valor</span><input id="custoValor" type="number" step="0.01" /></label>
-        <label><span>Unidade</span><input id="custoUnidade" value="POR_PALLET" /></label>
-        <label><span>Filtro (JSON)</span><input id="custoFiltro" placeholder='{"grupo_preco":[1,2]}' /></label>
-        <button class="button" type="submit">Salvar</button>
-      </form>
-      <table class="table">
-        <thead><tr><th>Destino</th><th>Tipo</th><th>Valor</th><th>Unidade</th></tr></thead>
-        <tbody id="custoBody"></tbody>
-      </table>
-    </section>
-
-    <section class="tab-pane" id="tab-pauta">
-      <header>
-        <h2>Pauta MS interna</h2>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button class="help-btn" data-ajuda="pauta-ms">Ajuda (?)</button>
+    <main class="content-area" id="appShell" aria-live="polite">
+      <section class="tab-pane active" id="tab-empresas">
+        <div class="section-header">
+          <h2>Empresas</h2>
+          <button class="help-btn" data-ajuda="empresas" type="button">Ajuda</button>
         </div>
-      </header>
-      <form id="pautaForm" class="input-row" style="margin-top:12px;">
-        <input type="hidden" id="pautaId" />
-        <label><span>Destino</span><select id="pautaDestino"><option value="MS">MS</option></select></label>
-        <label><span>Operação</span><select id="pautaOperacao"><option>INTERNA</option></select></label>
-        <label><span>Produto</span><input id="pautaProduto" list="produtosLista" placeholder="cole o ID" /></label>
-        <label><span>Tipo</span><select id="pautaTipo"><option>PRECO</option><option>PERCENTUAL</option><option>FORMULA_ESPECIAL</option></select></label>
-        <label><span>Pauta preço</span><input id="pautaPreco" type="number" step="0.01" /></label>
-        <label><span>% Aplicação</span><input id="pautaAplicacao" type="number" step="0.01" /></label>
-        <label><span>Pauta %</span><input id="pautaPercentual" type="number" step="0.01" /></label>
-        <label><span>MVA %</span><input id="pautaMva" type="number" step="0.01" /></label>
-        <label><span>Alíquota %</span><input id="pautaAliquota" type="number" step="0.01" /></label>
-        <button class="button" type="submit">Salvar</button>
-      </form>
-      <datalist id="produtosLista"></datalist>
-      <table class="table">
-        <thead><tr><th>SKU</th><th>Tipo</th><th>Valor</th></tr></thead>
-        <tbody id="pautaBody"></tbody>
-      </table>
-      <div class="notice" style="margin-top:12px;">
-        <h4>Simulador de fórmula especial</h4>
-        <form id="simForm" class="input-row">
-          <label><span>Preço tabela</span><input id="simPreco" type="number" step="0.01" value="0" /></label>
-          <label><span>MVA %</span><input id="simMva" type="number" step="0.01" value="0" /></label>
-          <label><span>Alíquota %</span><input id="simAliq" type="number" step="0.01" value="0" /></label>
-          <div class="notice" style="flex:1 1 120px;">Pauta calculada: <strong id="simResultado">0.00</strong></div>
+
+        <div class="card">
+          <h3>Cadastro rápido</h3>
+          <form id="empresaForm" class="grid cols-3" style="margin-top:12px;">
+            <label class="field"><span>Nova empresa</span><input id="empresaNome" required placeholder="Nome" /></label>
+            <div class="actions">
+              <button class="button btn-primary" type="submit">Criar</button>
+              <button class="button btn-secondary" type="button" id="gateAtualizar">Atualizar lista</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <h3>Empresas registradas</h3>
+          <div class="card-list" id="empresasGrid" style="margin-top:12px;"></div>
+        </div>
+      </section>
+
+      <section class="tab-pane" id="tab-produtos">
+        <div class="section-header">
+          <h2>Produtos</h2>
+          <div class="actions">
+            <button class="help-btn" data-ajuda="produtos" type="button">Ajuda</button>
+            <button class="help-btn" data-ajuda="importacao-produtos" type="button">Importação</button>
+          </div>
+        </div>
+
+        <form id="produtoForm" class="stacked" style="margin-top:12px;">
+          <input type="hidden" id="produtoId" />
+          <div class="card">
+            <h3>Dados principais</h3>
+            <div class="grid cols-3">
+              <label class="field"><span>SKU</span><input id="produtoSku" required /></label>
+              <label class="field"><span>Descrição</span><input id="produtoDesc" required /></label>
+              <label class="field"><span>Unidade</span><input id="produtoUnd" value="UN" /></label>
+              <label class="field"><span>Ativo</span><input id="produtoAtivo" type="checkbox" checked /></label>
+              <label class="field"><span>Referência família</span><input id="produtoRef" type="checkbox" /></label>
+              <label class="field"><span>Família</span><input id="produtoFamilia" /></label>
+              <label class="field"><span>Grupo preço</span><input id="produtoGrupo" type="number" min="1" value="1" /></label>
+              <label class="field"><span>Categoria preço base</span><input id="produtoCategoriaPreco" /></label>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Logística e códigos</h3>
+            <div class="grid cols-4">
+              <label class="field"><span>EAN13</span><input id="produtoEAN13" /></label>
+              <label class="field"><span>EAN14 caixa</span><input id="produtoEAN14" /></label>
+              <label class="field"><span>Apresentação</span><input id="produtoApresentacao" /></label>
+              <label class="field"><span>Pallet formato</span><input id="produtoPallet" placeholder="04x05" /></label>
+              <label class="field"><span>Pallet caixas</span><input id="produtoPalletCaixas" type="number" /></label>
+              <label class="field"><span>Cubagem m³</span><input id="produtoCubagem" type="number" step="0.0001" /></label>
+              <label class="field"><span>Peso padrão (kg)</span><input id="produtoPeso" type="number" step="0.01" /></label>
+              <label class="field"><span>Peso líquido kg</span><input id="produtoPesoLiq" type="number" step="0.01" /></label>
+              <label class="field"><span>Peso bruto kg</span><input id="produtoPesoBruto" type="number" step="0.01" /></label>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="button btn-primary" type="submit">Salvar produto</button>
+            <button class="button btn-secondary" type="button" id="produtoLimpar">Limpar</button>
+          </div>
         </form>
-      </div>
-    </section>
-  </main>
+
+        <div class="card" style="margin-top:12px;">
+          <h3>Importação</h3>
+          <p class="muted" style="margin-bottom:8px;">Cole o CSV conforme template e acompanhe o resultado.</p>
+          <div class="grid cols-2">
+            <label class="field" style="max-width:240px;">
+              <span>Template</span>
+              <select id="templateSelect">
+                <option value="DALLAS_PRODUTOS">DALLAS_PRODUTOS</option>
+                <option value="GERMANI_PRODUTOS">GERMANI_PRODUTOS</option>
+                <option value="DALLAS_LOGISTICA">DALLAS_LOGISTICA</option>
+              </select>
+            </label>
+            <div class="actions">
+              <button class="button btn-secondary" id="importBtn" type="button">Importar</button>
+            </div>
+          </div>
+          <textarea id="importArea" placeholder="Cabeçalho;Colunas"></textarea>
+          <div class="notice" id="importFeedback" style="margin-top:8px; display:none;"></div>
+        </div>
+
+        <div class="card table-card" style="margin-top:12px;">
+          <h3>Produtos cadastrados</h3>
+          <table class="table">
+            <thead><tr><th>SKU</th><th>Descrição</th><th>Un</th><th>Pallet</th><th>Caixas</th></tr></thead>
+            <tbody id="produtosBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="tab-pane" id="tab-ncm">
+        <div class="section-header">
+          <h2>Categorias NCM (Dallas)</h2>
+          <button class="help-btn" data-ajuda="ncm" type="button">Ajuda</button>
+        </div>
+
+        <div class="stacked" style="margin-top:12px;">
+          <div class="card">
+            <h3>Cadastro rápido</h3>
+            <form id="ncmForm" class="grid cols-2" style="margin-top:12px;">
+              <label class="field"><span>Nome</span><input id="ncmNome" required /></label>
+              <label class="field"><span>NCM</span><input id="ncmCodigo" required /></label>
+              <div class="actions">
+                <button class="button btn-primary" type="submit">Adicionar</button>
+                <button class="button btn-secondary" id="ncmSeed" type="button">Seed Dallas</button>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <h3>Lista</h3>
+            <ul id="ncmList"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-pane" id="tab-st">
+        <div class="section-header">
+          <h2>ST (matriz)</h2>
+          <button class="help-btn" data-ajuda="st" type="button">Ajuda</button>
+        </div>
+
+        <div class="stacked" style="margin-top:12px;">
+          <div class="card">
+            <h3>Cadastro rápido</h3>
+            <form id="stForm" class="grid cols-3" style="margin-top:12px;">
+              <input type="hidden" id="stId" />
+              <label class="field"><span>Destino</span><select id="stDestino"></select></label>
+              <label class="field"><span>Operação</span><select id="stOperacao"><option>INTERNA</option><option>INTERESTADUAL</option></select></label>
+              <label class="field"><span>Tem ST?</span><input type="checkbox" id="stTem" /></label>
+              <label class="field"><span>Variantes JSON</span><input id="stVariantes" placeholder='{"simples":true}' /></label>
+              <label class="field"><span>Parâmetros JSON</span><input id="stParametros" placeholder='{"base":"00"}' /></label>
+              <div class="actions">
+                <button class="button btn-primary" type="submit">Salvar</button>
+              </div>
+            </form>
+          </div>
+          <div class="card table-card">
+            <h3>Regras cadastradas</h3>
+            <table class="table">
+              <thead><tr><th>Destino</th><th>Operação</th><th>ST?</th></tr></thead>
+              <tbody id="stBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-pane" id="tab-custos">
+        <div class="section-header">
+          <h2>Custos logísticos</h2>
+          <button class="help-btn" data-ajuda="custos-logisticos" type="button">Ajuda</button>
+        </div>
+
+        <div class="stacked" style="margin-top:12px;">
+          <div class="card">
+            <h3>Cadastro rápido</h3>
+            <form id="custoForm" class="grid cols-3" style="margin-top:12px;">
+              <input type="hidden" id="custoId" />
+              <label class="field"><span>Destino</span><select id="custoDestino"></select></label>
+              <label class="field"><span>Operação</span><select id="custoOperacao"><option>INTERNA</option><option>INTERESTADUAL</option></select></label>
+              <label class="field"><span>Tipo custo</span><input id="custoTipo" value="PALETIZACAO" /></label>
+              <label class="field"><span>Valor</span><input id="custoValor" type="number" step="0.01" /></label>
+              <label class="field"><span>Unidade</span><input id="custoUnidade" value="POR_PALLET" /></label>
+              <label class="field"><span>Filtro (JSON)</span><input id="custoFiltro" placeholder='{"grupo_preco":[1,2]}' /></label>
+              <div class="actions">
+                <button class="button btn-primary" type="submit">Salvar</button>
+              </div>
+            </form>
+          </div>
+          <div class="card table-card">
+            <h3>Custos cadastrados</h3>
+            <table class="table">
+              <thead><tr><th>Destino</th><th>Tipo</th><th>Valor</th><th>Unidade</th></tr></thead>
+              <tbody id="custoBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-pane" id="tab-pauta">
+        <div class="section-header">
+          <h2>Pauta MS interna</h2>
+          <button class="help-btn" data-ajuda="pauta-ms" type="button">Ajuda</button>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <h3>Cadastro rápido</h3>
+          <form id="pautaForm" class="grid cols-3" style="margin-top:12px;">
+            <input type="hidden" id="pautaId" />
+            <label class="field"><span>Destino</span><select id="pautaDestino"><option value="MS">MS</option></select></label>
+            <label class="field"><span>Operação</span><select id="pautaOperacao"><option>INTERNA</option></select></label>
+            <label class="field"><span>Produto</span><input id="pautaProduto" list="produtosLista" placeholder="cole o ID" /></label>
+            <label class="field"><span>Tipo</span><select id="pautaTipo"><option>PRECO</option><option>PERCENTUAL</option><option>FORMULA_ESPECIAL</option></select></label>
+            <label class="field"><span>Pauta preço</span><input id="pautaPreco" type="number" step="0.01" /></label>
+            <label class="field"><span>% Aplicação</span><input id="pautaAplicacao" type="number" step="0.01" /></label>
+            <label class="field"><span>Pauta %</span><input id="pautaPercentual" type="number" step="0.01" /></label>
+            <label class="field"><span>MVA %</span><input id="pautaMva" type="number" step="0.01" /></label>
+            <label class="field"><span>Alíquota %</span><input id="pautaAliquota" type="number" step="0.01" /></label>
+            <div class="actions">
+              <button class="button btn-primary" type="submit">Salvar</button>
+            </div>
+          </form>
+        </div>
+
+        <datalist id="produtosLista"></datalist>
+
+        <div class="card table-card" style="margin-top:12px;">
+          <h3>Itens cadastrados</h3>
+          <table class="table">
+            <thead><tr><th>SKU</th><th>Tipo</th><th>Valor</th></tr></thead>
+            <tbody id="pautaBody"></tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <h3>Simulador de fórmula especial</h3>
+          <form id="simForm" class="grid cols-3" style="margin-top:12px;">
+            <label class="field"><span>Preço tabela</span><input id="simPreco" type="number" step="0.01" value="0" /></label>
+            <label class="field"><span>MVA %</span><input id="simMva" type="number" step="0.01" value="0" /></label>
+            <label class="field"><span>Alíquota %</span><input id="simAliq" type="number" step="0.01" value="0" /></label>
+            <div class="notice">Pauta calculada: <strong id="simResultado">0.00</strong></div>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <div class="footer">Core operacional preparado para GitHub Pages + Cloudflare Worker.</div>
 
@@ -212,6 +297,42 @@
         <button class="button secondary" id="ajudaFechar" type="button">Fechar</button>
       </header>
       <div id="ajudaConteudo" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="apiErroModal">
+    <div class="modal">
+      <header>
+        <h3>Status da API</h3>
+        <button class="button secondary" id="apiErroFechar" type="button">Fechar</button>
+      </header>
+      <div id="apiErroConteudo" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <div class="empresa-gate" id="empresaGate">
+    <div class="gate-panel">
+      <div class="gate-hero">
+        <div>
+          <p class="inline-badge">Acesso seguro</p>
+          <h2>Selecione a empresa para continuar</h2>
+          <p class="muted">Use o card para ativar ou cadastre uma nova empresa para liberar as abas.</p>
+        </div>
+        <div class="badge warn" id="empresaGateMensagem">Carregando empresas...</div>
+      </div>
+      <div id="empresaLista">
+        <div class="card-list gate-list" id="empresaGateLista"></div>
+      </div>
+      <form id="empresaGateForm" class="grid cols-2 gate-form">
+        <label class="field">
+          <span>Nova empresa</span>
+          <input id="empresaNomeGate" required placeholder="Nome da empresa" />
+        </label>
+        <div class="actions">
+          <button class="button btn-primary" type="submit">Criar e adicionar</button>
+          <button class="button btn-secondary" type="button" id="gateAtualizarGate">Atualizar lista</button>
+        </div>
+      </form>
     </div>
   </div>
 

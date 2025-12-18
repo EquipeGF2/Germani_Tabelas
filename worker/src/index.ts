@@ -72,6 +72,7 @@ function jsonResponse(request: Request, env: Env, status: number, payload: unkno
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
       ...corsHeaders(request, env),
     },
   });
