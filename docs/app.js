@@ -1,5 +1,5 @@
 const state = {
-  apiBase: localStorage.getItem("apiBase") || "",
+  apiBase: "",
   empresas: [],
   empresaSelecionada: null,
   produtos: [],
@@ -19,6 +19,28 @@ function setStatus(msg, isError = false) {
   el.style.color = isError ? "#b91c1c" : "inherit";
 }
 
+function getApiBaseUrl() {
+  const atual = (state.apiBase || "").trim();
+  if (atual) return atual;
+
+  const salvo = (localStorage.getItem("apiBase") || "").trim();
+  if (salvo) {
+    state.apiBase = salvo;
+    return salvo;
+  }
+
+  const vindoDoConfig = (window.APP_CONFIG?.API_BASE_URL || "").trim();
+  if (vindoDoConfig) state.apiBase = vindoDoConfig;
+  return vindoDoConfig;
+}
+
+function setApiBaseUrl(valor) {
+  const normalizado = (valor || "").trim();
+  state.apiBase = normalizado;
+  localStorage.setItem("apiBase", normalizado);
+  return normalizado;
+}
+
 function applyTema(temaJson) {
   if (!temaJson) return;
   try {
@@ -31,14 +53,22 @@ function applyTema(temaJson) {
 }
 
 async function api(path, options = {}) {
-  if (!state.apiBase) throw new Error("Configure a URL da API.");
-  const res = await fetch(`${state.apiBase}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const base = getApiBaseUrl();
+  if (!base) throw new Error("Configure a URL da API antes de continuar.");
+  const urlBase = base.replace(/\/$/, "");
+  let res;
+  try {
+    res = await fetch(`${urlBase}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    });
+  } catch (err) {
+    console.error(err);
+    throw new Error("Não foi possível conectar à API. Confira o endpoint e sua conexão.");
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error || `Erro ${res.status}`);
+    throw new Error(body?.error || `Erro ${res.status} ao chamar a API.`);
   }
   return res.json();
 }
@@ -446,6 +476,27 @@ async function refreshTudo() {
   ]);
 }
 
+function setupTabs() {
+  const tabs = document.querySelectorAll(".tab-link");
+  const panes = document.querySelectorAll(".tab-pane");
+  if (!tabs.length || !panes.length) return;
+
+  const ativar = (id) => {
+    tabs.forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.tabTarget === id);
+    });
+    panes.forEach((pane) => {
+      pane.classList.toggle("active", pane.id === id);
+    });
+  };
+
+  tabs.forEach((btn) => {
+    btn.addEventListener("click", () => ativar(btn.dataset.tabTarget));
+  });
+
+  ativar(tabs[0].dataset.tabTarget);
+}
+
 function restaurarEmpresaSelecionada() {
   const saved = localStorage.getItem("empresaSelecionada");
   if (saved) {
@@ -458,11 +509,15 @@ function restaurarEmpresaSelecionada() {
 }
 
 function init() {
+  state.apiBase = getApiBaseUrl();
   dom("apiBase").value = state.apiBase;
   dom("apiBase").addEventListener("change", (e) => {
-    state.apiBase = e.target.value.trim();
-    localStorage.setItem("apiBase", state.apiBase);
-    setStatus("Endpoint salvo. Clique em 'Carregar empresas'.");
+    const salvo = setApiBaseUrl(e.target.value);
+    setStatus(salvo ? "Endpoint salvo. Clique em 'Carregar empresas'." : "Informe um endpoint válido.", !salvo);
+  });
+  dom("salvarApiBase").addEventListener("click", () => {
+    const salvo = setApiBaseUrl(dom("apiBase").value);
+    setStatus(salvo ? "Endpoint salvo. Clique em 'Carregar empresas'." : "Informe um endpoint válido.", !salvo);
   });
   dom("empresaForm").addEventListener("submit", (e) => { e.preventDefault(); salvarEmpresa(); });
   dom("produtoForm").addEventListener("submit", (e) => { e.preventDefault(); salvarProduto(); });
@@ -474,10 +529,27 @@ function init() {
   dom("pautaForm").addEventListener("submit", (e) => { e.preventDefault(); salvarPauta(); });
   dom("simForm").addEventListener("input", simularFormula);
   dom("ajudaFechar").addEventListener("click", fecharAjuda);
-  dom("carregarEmpresas").addEventListener("click", async () => { await carregarEmpresas(); restaurarEmpresaSelecionada(); renderEmpresas(); refreshTudo(); });
+  dom("carregarEmpresas").addEventListener("click", async () => {
+    try {
+      if (!getApiBaseUrl()) return setStatus("Informe o endpoint da API antes de carregar.", true);
+      await carregarDestinos();
+      await carregarEmpresas();
+      restaurarEmpresaSelecionada();
+      renderEmpresas();
+      await refreshTudo();
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  });
   bindAjudaButtons();
-  if (state.apiBase) carregarEmpresas().then(() => { restaurarEmpresaSelecionada(); renderEmpresas(); refreshTudo(); });
-  carregarDestinos();
+  setupTabs();
+
+  if (getApiBaseUrl()) {
+    setStatus("Carregando dados iniciais...");
+    Promise.all([carregarDestinos(), carregarEmpresas()])
+      .then(() => { restaurarEmpresaSelecionada(); renderEmpresas(); refreshTudo(); })
+      .catch((err) => setStatus(err.message, true));
+  }
   preencherProdutoForm();
   preencherCustoForm();
   preencherStForm();
