@@ -9,26 +9,32 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="./config.js"></script>
 </head>
-<body>
+<body class="gate-open">
   <header>
-    <h1>Sistema Core (multiempresa)</h1>
+    <div class="brand">
+      <h1>Sistema Core (multiempresa)</h1>
+      <p class="muted">GitHub Pages + Cloudflare Worker</p>
+    </div>
+    <div class="status" id="statusBar">Carregando empresas...</div>
   </header>
 
-  <div class="config-bar">
-    <div class="config-bar__controls">
-      <label class="config-bar__label">
-        <span>Endpoint da API (Cloudflare Worker)</span>
-        <input id="apiBase" type="url" placeholder="https://worker.exemplo.dev" />
-      </label>
-      <div class="config-bar__actions">
-        <button class="button secondary" id="salvarApiBase" type="button">Salvar endpoint</button>
-        <button class="button" id="carregarEmpresas" type="button">Carregar empresas</button>
-      </div>
+  <div class="empresa-gate" id="empresaGate">
+    <div class="gate-panel">
+      <h2>Selecione a empresa para continuar</h2>
+      <p class="muted">A escolha é obrigatória para liberar as abas de gestão.</p>
+      <div class="card-list gate-list" id="empresaGateLista"></div>
+      <form id="empresaGateForm" class="input-row gate-form">
+        <label>
+          <span>Nova empresa</span>
+          <input id="empresaNomeGate" required placeholder="Nome da empresa" />
+        </label>
+        <button class="button" type="submit">Criar e adicionar</button>
+        <button class="button secondary" type="button" id="gateAtualizar">Atualizar lista</button>
+      </form>
     </div>
-    <div class="notice" id="statusBar">Pronto para começar. Configure o endpoint e clique em "Carregar empresas".</div>
   </div>
 
-  <main class="tabs">
+  <main class="tabs" id="appShell" aria-live="polite">
     <nav class="tabs-nav" aria-label="Navegação principal">
       <button class="tab-link active" type="button" data-tab-target="tab-empresas">Empresas</button>
       <button class="tab-link" type="button" data-tab-target="tab-produtos">Produtos</button>
