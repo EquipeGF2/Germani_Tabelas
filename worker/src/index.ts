@@ -1,4 +1,5 @@
-import { createClient, Client } from "@libsql/client/web";
+import { createClient } from "@libsql/client/web";
+import type { Client } from "@libsql/client";
 
 type Env = {
   LIBSQL_DB_URL: string;
