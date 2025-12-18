@@ -20,12 +20,26 @@ function setStatus(msg, isError = false) {
   el.style.color = isError ? "#ffd7d7" : "#fff";
 }
 
+function setGateMensagem(msg = "", isError = false) {
+  const el = dom("empresaGateMensagem");
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? "#ffd7d7" : "#b8c6d8";
+}
+
 function normalizeBaseUrl(valor) {
   let v = (valor || "").trim();
   if (!v) return "";
   if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
   v = v.replace(/^http:\/\//i, "https://");
   return v.replace(/\/$/, "");
+}
+
+function normalizeItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload?.items && Array.isArray(payload.items)) return payload.items;
+  if (payload?.empresas && Array.isArray(payload.empresas)) return payload.empresas;
+  return [];
 }
 
 function getApiBaseUrl() {
@@ -75,22 +89,34 @@ function empresaObrigatoria() {
   return true;
 }
 
-async function carregarEmpresas() {
-  const data = await api(`/v1/empresas`);
-  state.empresas = data.empresas || [];
-  renderEmpresasTab();
-  renderGateEmpresas();
+async function carregarEmpresasGate() {
+  setGateMensagem("Carregando empresas...");
+  const wrap = dom("empresaGateLista");
+  if (wrap) wrap.innerHTML = "";
+  try {
+    const data = await api(`/v1/empresas`);
+    const empresas = normalizeItems(data);
+    state.empresas = empresas;
+    renderEmpresasGate(empresas);
+    renderEmpresasTab();
+    setGateMensagem(empresas.length ? "" : "Nenhuma empresa cadastrada ainda.");
+    setStatus(empresas.length ? "Selecione uma empresa para continuar." : "Nenhuma empresa cadastrada ainda.");
+  } catch (err) {
+    console.error(err);
+    setGateMensagem(err.message, true);
+    setStatus(err.message, true);
+  }
 }
 
-function renderGateEmpresas() {
+function renderEmpresasGate(empresas) {
   const wrap = dom("empresaGateLista");
   if (!wrap) return;
   wrap.innerHTML = "";
-  if (!state.empresas.length) {
+  if (!empresas.length) {
     wrap.innerHTML = '<div class="notice">Nenhuma empresa cadastrada ainda.</div>';
     return;
   }
-  state.empresas.forEach((empresa) => {
+  empresas.forEach((empresa) => {
     const card = document.createElement("div");
     card.className = "card";
     card.innerHTML = `
@@ -135,6 +161,7 @@ async function selecionarEmpresa(id) {
   state.empresaSelecionada = empresa;
   localStorage.setItem("empresaSelecionada", id);
   applyTema(empresa.tema_json);
+  setGateMensagem("");
   fecharGate();
   setStatus(`Empresa ativa: ${empresa.nome}`);
   state.tabsCarregados.clear();
@@ -142,15 +169,24 @@ async function selecionarEmpresa(id) {
   if (ativa) await carregarTab(ativa);
 }
 
-async function salvarEmpresa(formId = "empresaForm") {
+async function salvarEmpresa(formId = "empresaForm", { autoSelecionar = false } = {}) {
   const inputId = formId === "empresaGateForm" ? "empresaNomeGate" : "empresaNome";
   const nomeEl = dom(inputId);
   const nome = nomeEl?.value.trim();
   if (!nome) return setStatus("Informe o nome da empresa.", true);
-  await api(`/v1/empresas`, { method: "POST", body: JSON.stringify({ nome }) });
-  if (nomeEl) nomeEl.value = "";
-  setStatus("Empresa criada.");
-  await carregarEmpresas();
+  try {
+    const created = await api(`/v1/empresas`, { method: "POST", body: JSON.stringify({ nome }) });
+    if (nomeEl) nomeEl.value = "";
+    setStatus("Empresa criada.");
+    await carregarEmpresasGate();
+    if (autoSelecionar && created?.id) {
+      await selecionarEmpresa(created.id);
+    }
+  } catch (err) {
+    setStatus(err.message, true);
+    if (formId === "empresaGateForm") setGateMensagem(err.message, true);
+    throw err;
+  }
 }
 
 function restaurarEmpresaSelecionada() {
@@ -165,12 +201,21 @@ function restaurarEmpresaSelecionada() {
   }
 }
 
+function bloquearTabs(bloquear = true) {
+  document.querySelectorAll(".tab-link").forEach((btn) => {
+    btn.disabled = bloquear;
+    btn.setAttribute("aria-disabled", bloquear ? "true" : "false");
+  });
+}
+
 function abrirGate() {
   document.body.classList.add("gate-open");
+  bloquearTabs(true);
 }
 
 function fecharGate() {
   document.body.classList.remove("gate-open");
+  bloquearTabs(false);
 }
 
 async function carregarProdutos() {
@@ -578,9 +623,23 @@ function setupTabs() {
 }
 
 function bindFormListeners() {
-  dom("empresaForm").addEventListener("submit", (e) => { e.preventDefault(); salvarEmpresa(); });
-  dom("empresaGateForm").addEventListener("submit", (e) => { e.preventDefault(); salvarEmpresa("empresaGateForm"); });
-  dom("gateAtualizar").addEventListener("click", () => carregarEmpresas().catch((err) => setStatus(err.message, true)));
+  dom("empresaForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await salvarEmpresa();
+    } catch (err) {
+      console.error(err);
+    }
+  });
+  dom("empresaGateForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await salvarEmpresa("empresaGateForm", { autoSelecionar: true });
+    } catch (err) {
+      // mensagem já exibida
+    }
+  });
+  dom("gateAtualizar").addEventListener("click", () => carregarEmpresasGate());
   dom("produtoForm").addEventListener("submit", (e) => { e.preventDefault(); salvarProduto(); });
   dom("importBtn").addEventListener("click", importarProdutos);
   dom("ncmForm").addEventListener("submit", (e) => { e.preventDefault(); salvarNcm(); });
@@ -600,6 +659,7 @@ async function init() {
     return;
   }
 
+  abrirGate();
   setStatus("Carregando empresas...");
   bindFormListeners();
   bindAjudaButtons();
@@ -610,7 +670,7 @@ async function init() {
   preencherPautaForm();
 
   try {
-    await carregarEmpresas();
+    await carregarEmpresasGate();
     restaurarEmpresaSelecionada();
     if (state.empresaSelecionada) {
       const ativa = document.querySelector(".tab-link.active")?.dataset.tabTarget;
