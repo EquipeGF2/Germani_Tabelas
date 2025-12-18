@@ -2,9 +2,9 @@ import { createClient } from "@libsql/client/web";
 import type { Client } from "@libsql/client";
 
 type Env = {
-  LIBSQL_DB_URL: string;
-  LIBSQL_DB_AUTH_TOKEN: string;
-  ALLOWED_ORIGINS: string;
+  LIBSQL_DB_URL?: string;
+  LIBSQL_DB_AUTH_TOKEN?: string;
+  ALLOWED_ORIGINS?: string;
 };
 
 type JsonMap = Record<string, any>;
@@ -35,6 +35,13 @@ type ProdutoInput = {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function getDb(env: Env): Client {
+  const url = env.LIBSQL_DB_URL;
+  const authToken = env.LIBSQL_DB_AUTH_TOKEN;
+  if (!url) throw new Error("MISSING_ENV:LIBSQL_DB_URL");
+  return createClient({ url, authToken });
 }
 
 function parseAllowedOrigins(env: Env): string[] {
@@ -81,11 +88,7 @@ async function readJson<T>(request: Request): Promise<T> {
 }
 
 function badRequest(request: Request, env: Env, message: string) {
-  return jsonResponse(request, env, 400, { ok: false, error: message });
-}
-
-function serverError(request: Request, env: Env, message: string) {
-  return jsonResponse(request, env, 500, { ok: false, error: message });
+  return jsonResponse(request, env, 400, { error: message });
 }
 
 function sanitizeString(value: unknown, def = "") {
@@ -98,8 +101,14 @@ function toNumber(value: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function withClient(env: Env): Client {
-  return createClient({ url: env.LIBSQL_DB_URL, authToken: env.LIBSQL_DB_AUTH_TOKEN });
+function handleError(err: any) {
+  const msg = typeof err?.message === "string" ? err.message : "Erro inesperado.";
+  if (msg === "MISSING_ENV:LIBSQL_DB_URL") {
+    return { status: 500, payload: { error: "DB_CONFIG_MISSING", details: "LIBSQL_DB_URL" } };
+  }
+
+  const details = msg.split("\n")[0].slice(0, 200);
+  return { status: 500, payload: { error: "DB_ERROR", details } };
 }
 
 export default {
@@ -112,11 +121,16 @@ export default {
       const url = new URL(request.url);
       const path = url.pathname.replace(/\/+$/, "") || "/";
       const method = request.method.toUpperCase();
-      const client = withClient(env);
+      let client: Client | null = null;
+      const getClient = () => {
+        if (!client) client = getDb(env);
+        return client;
+      };
 
       async function auditLog(args: { empresa_id?: string | null; entidade: string; entidade_id?: string | null; acao: string; payload?: unknown; }) {
+        const c = getClient();
         const id = crypto.randomUUID();
-        await client.execute({
+        await c.execute({
           sql: `
             INSERT INTO audit_log (id, empresa_id, entidade, entidade_id, acao, payload_json, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -138,13 +152,30 @@ export default {
         return jsonResponse(request, env, 200, { ok: true, ts: nowIso() });
       }
 
+      if (method === "GET" && path === "/v1/_diag") {
+        const hasDbUrl = Boolean(env.LIBSQL_DB_URL);
+        const hasToken = Boolean(env.LIBSQL_DB_AUTH_TOKEN);
+        let ok = false;
+
+        if (hasDbUrl) {
+          try {
+            const rs = await getClient().execute({ sql: "SELECT 1", args: [] });
+            ok = rs.rows.length > 0;
+          } catch {
+            ok = false;
+          }
+        }
+
+        return jsonResponse(request, env, 200, { hasDbUrl, hasToken, ok });
+      }
+
       // ================= EMPRESAS =================
       if (method === "GET" && path === "/v1/empresas") {
-        const rs = await client.execute({
-          sql: `SELECT id, nome, logo_url, tema_json, config_json FROM empresas ORDER BY nome`,
+        const rs = await getClient().execute({
+          sql: `SELECT * FROM empresas ORDER BY nome`,
           args: [],
         });
-        return jsonResponse(request, env, 200, { ok: true, empresas: rs.rows });
+        return jsonResponse(request, env, 200, { items: rs.rows });
       }
 
       if (method === "POST" && path === "/v1/empresas") {
@@ -154,13 +185,13 @@ export default {
 
         const id = crypto.randomUUID();
         const ts = nowIso();
-        await client.execute({
+        await getClient().execute({
           sql: `INSERT INTO empresas (id, nome, status, created_at, updated_at) VALUES (?, ?, 'ATIVA', ?, ?)`,
           args: [id, nome, ts, ts],
         });
 
         await auditLog({ empresa_id: id, entidade: "empresas", entidade_id: id, acao: "CREATE", payload: { nome } });
-        return jsonResponse(request, env, 201, { ok: true, id, nome });
+        return jsonResponse(request, env, 201, { id, nome, status: "ATIVA", created_at: ts, updated_at: ts });
       }
 
       const empresaMatch = path.match(/^\/v1\/empresas\/([^/]+)$/);
@@ -173,7 +204,7 @@ export default {
         const config_json = body.config_json ? JSON.stringify(body.config_json) : null;
         if (!nome) return badRequest(request, env, "Campo 'nome' é obrigatório.");
 
-        await client.execute({
+        await getClient().execute({
           sql: `UPDATE empresas SET nome = ?, logo_url = ?, tema_json = ?, config_json = ?, updated_at = ? WHERE id = ?`,
           args: [nome, logo_url, tema_json, config_json, nowIso(), empresaId],
         });
@@ -187,7 +218,7 @@ export default {
         const empresa_id = sanitizeString(url.searchParams.get("empresa_id"));
         if (!empresa_id) return badRequest(request, env, "Query 'empresa_id' é obrigatória.");
 
-        const rs = await client.execute({
+        const rs = await getClient().execute({
           sql: `
             SELECT id, empresa_id, sku, descricao, unidade, familia, ativo, ref_familia, grupo_preco,
                    peso_kg, ean13, ean14_caixa, apresentacao, cubagem_m3, peso_liq_kg, peso_bruto_kg,
@@ -229,7 +260,7 @@ export default {
         ];
 
         if (acao === "CREATE") {
-          await client.execute({
+          await getClient().execute({
             sql: `
               INSERT INTO produtos (
                 id, empresa_id, sku, descricao, unidade, familia, ativo, ref_familia, grupo_preco,
@@ -242,7 +273,7 @@ export default {
           return args[0] as string;
         }
 
-        await client.execute({
+        await getClient().execute({
           sql: `
             UPDATE produtos SET
               empresa_id = ?, sku = ?, descricao = ?, unidade = ?, familia = ?, ativo = ?, ref_familia = ?, grupo_preco = ?,
@@ -369,7 +400,7 @@ export default {
           return base;
         }
 
-        const existing = await client.execute({
+        const existing = await getClient().execute({
           sql: `SELECT id, sku FROM produtos WHERE empresa_id = ?`,
           args: [empresa_id],
         });
@@ -377,7 +408,7 @@ export default {
         for (const r of existing.rows as any[]) bySku.set(String(r.sku), String(r.id));
 
         try {
-          await client.execute({ sql: "BEGIN", args: [] });
+          await getClient().execute({ sql: "BEGIN", args: [] });
           for (let i = 0; i < rows.length; i++) {
             try {
               const prod = mapProduto(rows[i]);
@@ -397,9 +428,9 @@ export default {
               report.erros.push({ linha: i + 1, erro: err?.message || "Erro ao importar." });
             }
           }
-          await client.execute({ sql: "COMMIT", args: [] });
+                await getClient().execute({ sql: "COMMIT", args: [] });
         } catch (err) {
-          try { await client.execute({ sql: "ROLLBACK", args: [] }); } catch {}
+          try { await client?.execute({ sql: "ROLLBACK", args: [] }); } catch {}
           throw err;
         }
 
@@ -409,8 +440,8 @@ export default {
 
       // ================= DESTINOS =================
       if (method === "GET" && path === "/v1/destinos") {
-        const rs = await client.execute({ sql: `SELECT codigo, tipo, descricao FROM destinos ORDER BY codigo`, args: [] });
-        return jsonResponse(request, env, 200, { ok: true, destinos: rs.rows });
+        const rs = await getClient().execute({ sql: `SELECT codigo, tipo, descricao FROM destinos ORDER BY codigo`, args: [] });
+        return jsonResponse(request, env, 200, { items: rs.rows });
       }
 
       if (method === "POST" && path === "/v1/destinos") {
@@ -421,7 +452,7 @@ export default {
         if (!codigo) return badRequest(request, env, "Campo 'codigo' é obrigatório.");
         if (!descricao) return badRequest(request, env, "Campo 'descricao' é obrigatório.");
 
-        await client.execute({
+        await getClient().execute({
           sql: `INSERT OR REPLACE INTO destinos (codigo, tipo, descricao) VALUES (?, ?, ?)`,
           args: [codigo, tipo, descricao],
         });
@@ -436,7 +467,7 @@ export default {
         const operacao = sanitizeString(url.searchParams.get("operacao"));
         if (!empresa_id) return badRequest(request, env, "Query 'empresa_id' é obrigatória.");
 
-        const rs = await client.execute({
+        const rs = await getClient().execute({
           sql: `
             SELECT id, empresa_id, destino_codigo, operacao, tem_st, variantes_json, parametros_json, ativo, created_at, updated_at
             FROM st_regras
@@ -460,7 +491,7 @@ export default {
 
         const id = crypto.randomUUID();
         const ts = nowIso();
-        await client.execute({
+        await getClient().execute({
           sql: `
             INSERT INTO st_regras (id, empresa_id, destino_codigo, operacao, tem_st, variantes_json, parametros_json, ativo, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -489,7 +520,7 @@ export default {
         const empresa_id = sanitizeString(body.empresa_id);
         if (!empresa_id) return badRequest(request, env, "Campo 'empresa_id' é obrigatório.");
 
-        await client.execute({
+        await getClient().execute({
           sql: `
             UPDATE st_regras SET destino_codigo = ?, operacao = ?, tem_st = ?, variantes_json = ?, parametros_json = ?, ativo = ?, updated_at = ?
             WHERE id = ? AND empresa_id = ?
@@ -517,7 +548,7 @@ export default {
         const operacao = sanitizeString(url.searchParams.get("operacao"));
         if (!empresa_id) return badRequest(request, env, "Query 'empresa_id' é obrigatória.");
 
-        const rs = await client.execute({
+        const rs = await getClient().execute({
           sql: `
             SELECT id, empresa_id, destino_codigo, operacao, tipo_custo, aplica_em_json, valor, unidade_cobranca, ativo, created_at, updated_at
             FROM custos_logisticos
@@ -546,7 +577,7 @@ export default {
 
         const id = crypto.randomUUID();
         const ts = nowIso();
-        await client.execute({
+        await getClient().execute({
           sql: `
             INSERT INTO custos_logisticos (id, empresa_id, destino_codigo, operacao, tipo_custo, aplica_em_json, valor, unidade_cobranca, ativo, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -577,7 +608,7 @@ export default {
         if (!empresa_id) return badRequest(request, env, "Campo 'empresa_id' é obrigatório.");
         if (typeof body.valor !== "number") return badRequest(request, env, "Campo 'valor' deve ser numérico.");
 
-        await client.execute({
+        await getClient().execute({
           sql: `
             UPDATE custos_logisticos SET destino_codigo = ?, operacao = ?, tipo_custo = ?, aplica_em_json = ?, valor = ?, unidade_cobranca = ?, ativo = ?, updated_at = ?
             WHERE id = ? AND empresa_id = ?
@@ -603,7 +634,7 @@ export default {
       if (method === "GET" && path === "/v1/ncm") {
         const empresa_id = sanitizeString(url.searchParams.get("empresa_id"));
         if (!empresa_id) return badRequest(request, env, "Query 'empresa_id' é obrigatória.");
-        const rs = await client.execute({ sql: `SELECT id, empresa_id, nome, ncm, created_at FROM ncm_categorias WHERE empresa_id = ? ORDER BY nome`, args: [empresa_id] });
+        const rs = await getClient().execute({ sql: `SELECT id, empresa_id, nome, ncm, created_at FROM ncm_categorias WHERE empresa_id = ? ORDER BY nome`, args: [empresa_id] });
         return jsonResponse(request, env, 200, { ok: true, categorias: rs.rows });
       }
 
@@ -617,7 +648,7 @@ export default {
         if (!ncm) return badRequest(request, env, "Campo 'ncm' é obrigatório.");
 
         const id = crypto.randomUUID();
-        await client.execute({ sql: `INSERT INTO ncm_categorias (id, empresa_id, nome, ncm, created_at) VALUES (?, ?, ?, ?, ?)`, args: [id, empresa_id, nome, ncm, nowIso()] });
+        await getClient().execute({ sql: `INSERT INTO ncm_categorias (id, empresa_id, nome, ncm, created_at) VALUES (?, ?, ?, ?, ?)`, args: [id, empresa_id, nome, ncm, nowIso()] });
         await auditLog({ empresa_id, entidade: "ncm_categorias", entidade_id: id, acao: "CREATE", payload: body });
         return jsonResponse(request, env, 201, { ok: true, id });
       }
@@ -636,7 +667,7 @@ export default {
         for (const seed of seeds) {
           if (!seed?.nome || !seed?.ncm) continue;
           const id = crypto.randomUUID();
-          await client.execute({
+          await getClient().execute({
             sql: `INSERT OR IGNORE INTO ncm_categorias (id, empresa_id, nome, ncm, created_at) VALUES (?, ?, ?, ?, ?)`,
             args: [id, empresa_id, seed.nome, seed.ncm, nowIso()],
           });
@@ -653,7 +684,7 @@ export default {
         const operacao = sanitizeString(url.searchParams.get("operacao"));
         if (!empresa_id) return badRequest(request, env, "Query 'empresa_id' é obrigatória.");
 
-        const rs = await client.execute({
+        const rs = await getClient().execute({
           sql: `
             SELECT pi.id, pi.empresa_id, pi.destino_codigo, pi.operacao, pi.produto_id, pi.pauta_tipo, pi.pauta_preco,
                    pi.percentual_aplicacao, pi.pauta_percentual, pi.mva_pct, pi.aliquota_pct, pi.ativo, pi.created_at, pi.updated_at,
@@ -700,7 +731,7 @@ export default {
 
         const id = crypto.randomUUID();
         const ts = nowIso();
-        await client.execute({
+        await getClient().execute({
           sql: `
             INSERT INTO pauta_itens (
               id, empresa_id, destino_codigo, operacao, produto_id, pauta_tipo, pauta_preco, percentual_aplicacao,
@@ -736,7 +767,7 @@ export default {
         if (!empresa_id) return badRequest(request, env, "Campo 'empresa_id' é obrigatório.");
         try { validatePauta(body); } catch (e: any) { return badRequest(request, env, e.message); }
 
-        await client.execute({
+        await getClient().execute({
           sql: `
             UPDATE pauta_itens SET destino_codigo = ?, operacao = ?, produto_id = ?, pauta_tipo = ?, pauta_preco = ?, percentual_aplicacao = ?,
               pauta_percentual = ?, mva_pct = ?, aliquota_pct = ?, ativo = ?, updated_at = ?
@@ -764,7 +795,8 @@ export default {
 
       return jsonResponse(request, env, 404, { ok: false, error: "Rota não encontrada." });
     } catch (err: any) {
-      return serverError(request, env, err?.message || "Erro inesperado.");
+      const mapped = handleError(err);
+      return jsonResponse(request, env, mapped.status, mapped.payload);
     }
   },
 };
