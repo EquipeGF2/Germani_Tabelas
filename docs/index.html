@@ -4,25 +4,41 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Core Operacional</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./style.css" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="./config.js"></script>
 </head>
 <body>
   <header>
     <h1>Sistema Core (multiempresa)</h1>
-    <div class="input-row" style="align-items:center; margin:0;">
-      <label style="min-width:240px;">
+  </header>
+
+  <div class="config-bar">
+    <div class="config-bar__controls">
+      <label class="config-bar__label">
         <span>Endpoint da API (Cloudflare Worker)</span>
         <input id="apiBase" type="url" placeholder="https://worker.exemplo.dev" />
       </label>
-      <button class="button" id="carregarEmpresas">Carregar empresas</button>
+      <div class="config-bar__actions">
+        <button class="button secondary" id="salvarApiBase" type="button">Salvar endpoint</button>
+        <button class="button" id="carregarEmpresas" type="button">Carregar empresas</button>
+      </div>
     </div>
-  </header>
+    <div class="notice" id="statusBar">Pronto para começar. Configure o endpoint e clique em "Carregar empresas".</div>
+  </div>
 
-  <main>
-    <div class="notice" id="statusBar">Pronto para começar. Selecione a empresa para ativar o contexto.</div>
+  <main class="tabs">
+    <nav class="tabs-nav" aria-label="Navegação principal">
+      <button class="tab-link active" type="button" data-tab-target="tab-empresas">Empresas</button>
+      <button class="tab-link" type="button" data-tab-target="tab-produtos">Produtos</button>
+      <button class="tab-link" type="button" data-tab-target="tab-ncm">Categorias NCM</button>
+      <button class="tab-link" type="button" data-tab-target="tab-st">ST</button>
+      <button class="tab-link" type="button" data-tab-target="tab-custos">Custos logísticos</button>
+      <button class="tab-link" type="button" data-tab-target="tab-pauta">Pauta MS</button>
+    </nav>
 
-    <section>
+    <section class="tab-pane active" id="tab-empresas">
       <header>
         <h2>Empresas</h2>
         <button class="help-btn" data-ajuda="empresas">Ajuda (?)</button>
@@ -34,7 +50,7 @@
       <div class="card-list" id="empresasGrid" style="margin-top:12px;"></div>
     </section>
 
-    <section>
+    <section class="tab-pane" id="tab-produtos">
       <header>
         <h2>Produtos</h2>
         <div style="display:flex;gap:8px;align-items:center;">
@@ -86,7 +102,7 @@
       </table>
     </section>
 
-    <section>
+    <section class="tab-pane" id="tab-ncm">
       <header>
         <h2>Categorias NCM (Dallas)</h2>
         <button class="help-btn" data-ajuda="ncm">Ajuda (?)</button>
@@ -100,7 +116,7 @@
       <ul id="ncmList"></ul>
     </section>
 
-    <section>
+    <section class="tab-pane" id="tab-st">
       <header>
         <h2>ST (matriz)</h2>
         <button class="help-btn" data-ajuda="st">Ajuda (?)</button>
@@ -120,7 +136,7 @@
       </table>
     </section>
 
-    <section>
+    <section class="tab-pane" id="tab-custos">
       <header>
         <h2>Custos logísticos</h2>
         <button class="help-btn" data-ajuda="custos-logisticos">Ajuda (?)</button>
@@ -141,7 +157,7 @@
       </table>
     </section>
 
-    <section>
+    <section class="tab-pane" id="tab-pauta">
       <header>
         <h2>Pauta MS interna</h2>
         <div style="display:flex;gap:8px;align-items:center;">
@@ -189,8 +205,7 @@
       <div id="ajudaConteudo" style="margin-top:12px;"></div>
     </div>
   </div>
-  <script src="./config.js"></script>
-  <script src="./app.js"></script>
 
+  <script src="./app.js"></script>
 </body>
 </html>

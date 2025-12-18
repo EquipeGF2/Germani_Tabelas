@@ -9,7 +9,7 @@
 body {
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   margin: 0;
-  background: #fafafa;
+  background: #f7f9fb;
   color: var(--cor-texto);
 }
 
@@ -18,13 +18,41 @@ header {
   color: #fff;
   padding: 16px 24px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
   align-items: center;
   justify-content: space-between;
 }
 
 header h1 { margin: 0; font-size: 20px; }
+
+.config-bar {
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.config-bar__controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.config-bar__label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.config-bar__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 
 main {
   padding: 24px;
@@ -32,14 +60,45 @@ main {
   margin: 0 auto 64px;
 }
 
-section {
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tabs-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.tab-link {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: inherit;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all .12s ease;
+}
+
+.tab-link.active {
+  background: var(--cor-primaria);
+  border-color: var(--cor-primaria);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.15);
+}
+
+.tab-pane {
   background: #fff;
   border-radius: 14px;
   padding: 18px;
-  margin-bottom: 16px;
   border: 1px solid #e5e7eb;
   box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  display: none;
 }
+
+.tab-pane.active { display: block; }
 
 section header {
   background: transparent;
@@ -48,6 +107,7 @@ section header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
 section header h2 {
@@ -199,6 +259,9 @@ textarea { min-height: 120px; }
 }
 
 .modal header {
+  background: transparent;
+  color: inherit;
+  padding: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -206,9 +269,10 @@ textarea { min-height: 120px; }
 
 .modal h3 { margin: 0; }
 
-pre, code { font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace; }
-
-@media (max-width: 700px) {
-  header { flex-direction: column; align-items: flex-start; }
+@media (max-width: 720px) {
+  header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .config-bar__controls { grid-template-columns: 1fr; }
+  .config-bar__actions { justify-content: flex-start; }
+  .tab-link { text-align: left; }
   .input-row label { flex: 1 1 100%; }
 }
