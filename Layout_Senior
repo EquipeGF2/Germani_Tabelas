@@ -1,0 +1,428 @@
+'==============================================================================
+' MODULO: ExportarTabelasPreco  |  VERSAO: 3.0  |  DATA: 24/03/2026
+' CORRECAO v3.0:
+'   - ListBox vazio: ctrl.AddItem no Designer perde os itens ao instanciar.
+'   - Solucao: nomes das abas passados via g_NomesAbas (global) e carregados
+'     no UserForm_Initialize, que roda apos a instanciacao do formulario.
+'==============================================================================
+Option Explicit
+
+Private Const COD_COLUNA_B  As String = "|0016|"
+Private Const ABA_CONFIG     As String = "Config_Export"
+Private Const PASTA_EXPORT   As String = "Importacao"
+Private Const COD_MIN_DIGITS As Integer = 7
+Private Const COD_MAX_DIGITS As Integer = 8
+
+Public g_Selecionadas() As String
+Public g_SelCnt         As Long
+Public g_Cancelado      As Boolean
+Public g_NomesAbas()    As String   ' << NOVO: passa nomes para o Initialize
+Public g_NomesCnt       As Long     ' << NOVO: quantidade de nomes
+
+Public Sub ReceberSelecao(sel() As String, k As Long)
+    g_Selecionadas = sel
+    g_SelCnt = k
+    g_Cancelado = False
+End Sub
+
+Public Sub ExportarTabelas()
+    Dim wb As Workbook, ws As Worksheet, wsConfig As Worksheet
+    Dim pastaDestino As String, i As Long
+    Dim tabelasProcessadas As Long, erros As String
+    Set wb = ThisWorkbook
+
+    Dim nomes() As String, cnt As Long
+    cnt = 0
+    ReDim nomes(0 To wb.Worksheets.Count - 1)
+    For Each ws In wb.Worksheets
+        If EhAbaTabela(ws.Name) Then
+            nomes(cnt) = ws.Name
+            cnt = cnt + 1
+        End If
+    Next ws
+    If cnt = 0 Then MsgBox "Nenhuma aba TABELA encontrada.", vbInformation: Exit Sub
+    ReDim Preserve nomes(0 To cnt - 1)
+
+    Dim dataInicial As String
+    dataInicial = InputBox("Informe a DATA INICIAL para exportacao:" & vbCrLf & _
+                           "(formato: DD/MM/AAAA)", "Data Inicial", Format(Date, "DD/MM/YYYY"))
+    If dataInicial = "" Then MsgBox "Exportacao cancelada.", vbInformation: Exit Sub
+    If Not IsDate(dataInicial) Then MsgBox "Data invalida. Use DD/MM/AAAA.", vbExclamation: Exit Sub
+    dataInicial = Format(CDate(dataInicial), "DD/MM/YYYY")
+
+    g_Cancelado = True
+    g_SelCnt = 0
+    ReDim g_Selecionadas(0)
+
+    ' Passa nomes para as globais antes de abrir o form
+    g_NomesAbas = nomes
+    g_NomesCnt = cnt
+
+    MostrarSeletorDinamico cnt
+
+    If g_Cancelado Or g_SelCnt = 0 Then
+        MsgBox "Exportacao cancelada.", vbInformation: Exit Sub
+    End If
+
+    pastaDestino = ObterPastaLocal(wb)
+    If pastaDestino = "" Then
+        MsgBox "Nao foi possivel determinar a pasta do arquivo." & vbCrLf & _
+               "Verifique se o arquivo esta sincronizado localmente.", vbExclamation
+        Exit Sub
+    End If
+    pastaDestino = pastaDestino & PASTA_EXPORT & Application.PathSeparator
+    If Dir(pastaDestino, vbDirectory) = "" Then
+        MkDir Left(pastaDestino, Len(pastaDestino) - 1)
+    End If
+
+    Set wsConfig = ObterOuCriarAbaConfig(wb)
+    tabelasProcessadas = 0: erros = ""
+
+    For i = 0 To g_SelCnt - 1
+        Dim nomeAba As String: nomeAba = g_Selecionadas(i)
+        If nomeAba = "" Then GoTo ProxSel
+        On Error GoTo ErroAba
+        Set ws = wb.Worksheets(nomeAba)
+        ProcessarAba ws, wsConfig, dataInicial, pastaDestino
+        tabelasProcessadas = tabelasProcessadas + 1
+        GoTo ProxSel
+ErroAba:
+        erros = erros & vbCrLf & "- " & nomeAba & ": " & Err.Description
+        Err.Clear: Resume ProxSel
+ProxSel:
+    Next i
+
+    Dim msg As String
+    msg = "Exportacao concluida!" & vbCrLf & vbCrLf & _
+          "Tabelas exportadas: " & tabelasProcessadas & vbCrLf & vbCrLf & _
+          "Arquivos salvos em:" & vbCrLf & pastaDestino
+    If erros <> "" Then msg = msg & vbCrLf & vbCrLf & "Erros:" & erros
+    MsgBox msg, vbInformation, "Exportacao de Tabelas"
+End Sub
+
+'------------------------------------------------------------------------------
+' SELETOR DINAMICO  |  v3.0
+' Os nomes sao carregados via UserForm_Initialize (apos instanciacao)
+' usando as variaveis globais g_NomesAbas / g_NomesCnt.
+'------------------------------------------------------------------------------
+Private Sub MostrarSeletorDinamico(cnt As Long)
+    Dim vbc As Object, dsn As Object, cm As Object, ctrl As Object
+
+    Set vbc = ThisWorkbook.VBProject.VBComponents.Add(3)
+    vbc.Properties("Caption") = "Selecionar Tabelas para Exportar"
+    vbc.Properties("Width") = 430
+    vbc.Properties("Height") = 460
+    vbc.Properties("StartUpPosition") = 1
+
+    Set dsn = vbc.Designer
+
+    Set ctrl = dsn.Controls.Add("Forms.Label.1")
+    ctrl.Caption = "Selecione as tabelas (" & cnt & " disponiveis):"
+    ctrl.Left = 8: ctrl.Top = 6: ctrl.Width = 400: ctrl.Height = 16
+    ctrl.Font.Bold = True
+
+    Set ctrl = dsn.Controls.Add("Forms.ListBox.1")
+    ctrl.Name = "lstTabelas"
+    ctrl.Left = 8: ctrl.Top = 26: ctrl.Width = 400: ctrl.Height = 300
+    ctrl.MultiSelect = 2
+    ' ** NAO adicionar itens aqui — serao adicionados no Initialize **
+
+    Set ctrl = dsn.Controls.Add("Forms.CommandButton.1")
+    ctrl.Name = "btnTodas": ctrl.Caption = "Selecionar Todas"
+    ctrl.Left = 8: ctrl.Top = 336: ctrl.Width = 120: ctrl.Height = 24
+
+    Set ctrl = dsn.Controls.Add("Forms.CommandButton.1")
+    ctrl.Name = "btnNenhuma": ctrl.Caption = "Desmarcar Todas"
+    ctrl.Left = 136: ctrl.Top = 336: ctrl.Width = 120: ctrl.Height = 24
+
+    Set ctrl = dsn.Controls.Add("Forms.CommandButton.1")
+    ctrl.Name = "btnExportar": ctrl.Caption = "Exportar"
+    ctrl.Left = 270: ctrl.Top = 336: ctrl.Width = 80: ctrl.Height = 24
+
+    Set ctrl = dsn.Controls.Add("Forms.CommandButton.1")
+    ctrl.Name = "btnCancelar": ctrl.Caption = "Cancelar"
+    ctrl.Left = 358: ctrl.Top = 336: ctrl.Width = 60: ctrl.Height = 24
+
+    Dim code As String
+
+    ' Initialize: carrega o ListBox via globais (roda depois de instanciar)
+    code = "Private Sub UserForm_Initialize()" & vbCrLf
+    code = code & "    Dim j As Long" & vbCrLf
+    code = code & "    For j = 0 To g_NomesCnt - 1" & vbCrLf
+    code = code & "        lstTabelas.AddItem g_NomesAbas(j)" & vbCrLf
+    code = code & "    Next j" & vbCrLf
+    code = code & "End Sub" & vbCrLf & vbCrLf
+
+    code = code & "Private Sub btnTodas_Click()" & vbCrLf
+    code = code & "    Dim j As Long" & vbCrLf
+    code = code & "    For j = 0 To lstTabelas.ListCount - 1" & vbCrLf
+    code = code & "        lstTabelas.Selected(j) = True" & vbCrLf
+    code = code & "    Next j" & vbCrLf
+    code = code & "End Sub" & vbCrLf & vbCrLf
+
+    code = code & "Private Sub btnNenhuma_Click()" & vbCrLf
+    code = code & "    Dim j As Long" & vbCrLf
+    code = code & "    For j = 0 To lstTabelas.ListCount - 1" & vbCrLf
+    code = code & "        lstTabelas.Selected(j) = False" & vbCrLf
+    code = code & "    Next j" & vbCrLf
+    code = code & "End Sub" & vbCrLf & vbCrLf
+
+    code = code & "Private Sub btnExportar_Click()" & vbCrLf
+    code = code & "    Dim sel() As String, k As Long, j As Long" & vbCrLf
+    code = code & "    k = 0" & vbCrLf
+    code = code & "    For j = 0 To lstTabelas.ListCount - 1" & vbCrLf
+    code = code & "        If lstTabelas.Selected(j) Then k = k + 1" & vbCrLf
+    code = code & "    Next j" & vbCrLf
+    code = code & "    If k = 0 Then MsgBox ""Selecione ao menos uma tabela."", vbExclamation: Exit Sub" & vbCrLf
+    code = code & "    ReDim sel(0 To k - 1)" & vbCrLf
+    code = code & "    k = 0" & vbCrLf
+    code = code & "    For j = 0 To lstTabelas.ListCount - 1" & vbCrLf
+    code = code & "        If lstTabelas.Selected(j) Then" & vbCrLf
+    code = code & "            sel(k) = lstTabelas.List(j)" & vbCrLf
+    code = code & "            k = k + 1" & vbCrLf
+    code = code & "        End If" & vbCrLf
+    code = code & "    Next j" & vbCrLf
+    code = code & "    ReceberSelecao sel, k" & vbCrLf
+    code = code & "    Me.Hide" & vbCrLf
+    code = code & "End Sub" & vbCrLf & vbCrLf
+
+    code = code & "Private Sub btnCancelar_Click()" & vbCrLf
+    code = code & "    Me.Hide" & vbCrLf
+    code = code & "End Sub"
+
+    Set cm = vbc.CodeModule
+    cm.AddFromString code
+
+    VBA.UserForms.Add(vbc.Name).Show vbModal
+    ThisWorkbook.VBProject.VBComponents.Remove vbc
+End Sub
+
+Private Function ObterPastaLocal(wb As Workbook) As String
+    Dim sep As String: sep = Application.PathSeparator
+    Dim caminho As String
+    caminho = wb.Path
+    If Len(caminho) > 0 And Left(caminho, 4) <> "http" Then
+        If Right(caminho, 1) <> sep Then caminho = caminho & sep
+        ObterPastaLocal = caminho: Exit Function
+    End If
+    Dim fullName As String: fullName = wb.fullName
+    If Len(fullName) > 0 And Left(fullName, 4) <> "http" Then
+        caminho = Left(fullName, InStrRev(fullName, sep))
+        If Len(caminho) > 0 Then ObterPastaLocal = caminho: Exit Function
+    End If
+    Dim oneDriveLocal As String
+    oneDriveLocal = Environ("OneDrive")
+    If Len(oneDriveLocal) = 0 Then oneDriveLocal = Environ("OneDriveConsumer")
+    If Len(oneDriveLocal) = 0 Then oneDriveLocal = Environ("OneDriveCommercial")
+    If Len(oneDriveLocal) > 0 And Len(fullName) > 0 Then
+        Dim urlPath As String: urlPath = fullName
+        Dim posSlash As Integer: posSlash = InStr(9, urlPath, "/")
+        If posSlash > 0 Then
+            urlPath = Mid(urlPath, posSlash)
+            urlPath = Mid(urlPath, InStr(2, urlPath, "/"))
+            urlPath = Replace(urlPath, "/", sep)
+            Dim posUlt As Integer: posUlt = InStrRev(urlPath, sep)
+            If posUlt > 0 Then urlPath = Left(urlPath, posUlt)
+            caminho = oneDriveLocal & urlPath
+            If Dir(caminho, vbDirectory) <> "" Then
+                ObterPastaLocal = caminho: Exit Function
+            End If
+        End If
+    End If
+    ObterPastaLocal = ""
+End Function
+
+Private Function EhAbaTabela(nome As String) As Boolean
+    Dim nl As String: nl = LCase(nome)
+    EhAbaTabela = (InStr(nl, "tabela") > 0 Or InStr(nl, "tabelas") > 0)
+    If LCase(nome) = LCase(ABA_CONFIG) Then EhAbaTabela = False
+    If LCase(nome) = "vba history" Then EhAbaTabela = False
+    If LCase(nome) = "claude log" Then EhAbaTabela = False
+End Function
+
+Private Function EhCodigoProduto(valor As Variant) As Boolean
+    EhCodigoProduto = False
+    If IsEmpty(valor) Or IsNull(valor) Then Exit Function
+    Dim s As String: s = Trim(CStr(valor))
+    If Not IsNumeric(s) Then Exit Function
+    EhCodigoProduto = (Len(s) >= COD_MIN_DIGITS And Len(s) <= COD_MAX_DIGITS)
+End Function
+
+Private Function EhPrecoValido(valor As Variant) As Boolean
+    EhPrecoValido = False
+    If IsEmpty(valor) Or IsNull(valor) Then Exit Function
+    Dim s As String: s = Trim(CStr(valor))
+    If s = "" Then Exit Function
+    If Not IsNumeric(s) Then Exit Function
+    If CDbl(s) <= 0 Then Exit Function
+    EhPrecoValido = True
+End Function
+
+Private Function ExtrairCodigoTabela(nomeAba As String, wsConfig As Worksheet) As String
+    Dim partes() As String, cod As String, nomeST As String
+    nomeST = Trim(Mid(nomeAba, InStr(LCase(nomeAba), "tabela") + 6))
+    partes = Split(nomeST, " ")
+    If UBound(partes) >= 0 Then
+        If partes(0) Like "####" Or IsNumeric(partes(0)) Then cod = partes(0)
+    End If
+    If cod = "" Then
+        cod = LerConfigTabela(wsConfig, nomeAba, "CODIGO_TABELA")
+        If cod = "" Then
+            cod = InputBox("Codigo nao identificado para:" & vbCrLf & _
+                           Chr(34) & nomeAba & Chr(34) & vbCrLf & vbCrLf & _
+                           "Informe o codigo (ex: 0016):", "Codigo da Tabela", "")
+            If cod <> "" Then SalvarConfigTabela wsConfig, nomeAba, "CODIGO_TABELA", cod
+        End If
+    End If
+    ExtrairCodigoTabela = cod
+End Function
+
+Private Function ObterColunaCodigoProduto(codigoTabela As String, nomeAba As String, _
+                                           ws As Worksheet, wsConfig As Worksheet) As Long
+    If InStr(COD_COLUNA_B, "|" & codigoTabela & "|") > 0 Then
+        ObterColunaCodigoProduto = 2: Exit Function
+    End If
+    Dim colSalva As String: colSalva = LerConfigTabela(wsConfig, nomeAba, "COLUNA_CODIGO")
+    If colSalva <> "" Then ObterColunaCodigoProduto = CLng(colSalva): Exit Function
+    Dim resp As String
+    resp = InputBox("Tabela " & Chr(34) & nomeAba & Chr(34) & vbCrLf & _
+                    "Letra da coluna do codigo do produto? (Padrao = C)", "Coluna do Codigo", "C")
+    If resp = "" Then resp = "C"
+    resp = UCase(Trim(resp))
+    Dim nc As Long: nc = Range(resp & "1").Column
+    SalvarConfigTabela wsConfig, nomeAba, "COLUNA_CODIGO", CStr(nc)
+    ObterColunaCodigoProduto = nc
+End Function
+
+Private Function IdentificarColunasPreco(ws As Worksheet) As Variant
+    Dim res() As String, cnt As Long, c As Long
+    Dim lastCol As Long, h3 As String, h5 As String, grupo As String, nome As String
+    lastCol = ws.UsedRange.Columns.Count + ws.UsedRange.Column - 1
+    cnt = 0: grupo = "": ReDim res(0 To 50)
+    For c = 6 To lastCol
+        h3 = Trim(CStr(ws.Cells(3, c).Value))
+        h5 = Trim(CStr(ws.Cells(5, c).Value))
+        If h3 <> "" Then grupo = h3
+        Dim h5l As String: h5l = LCase(h5)
+        If h5l = "cx" Or h5l = "pct" Or h5l = "preco" Or _
+           (h5l <> "" And h5l <> "qt" And h5l <> "descricao" And _
+            h5l <> "cod" And h5l <> "%") Then
+            nome = grupo: If nome = "" Then nome = "PRECO"
+            If h5l = "cx" Or h5l = "pct" Then nome = nome & " - " & UCase(h5)
+            res(cnt) = nome & "|" & c: cnt = cnt + 1
+        End If
+    Next c
+    If cnt = 0 Then res(0) = "PRECO|6": cnt = 1
+    ReDim Preserve res(0 To cnt - 1)
+    IdentificarColunasPreco = res
+End Function
+
+Private Function EscolherColunaPreco(colunasPreco As Variant, nomeAba As String, _
+                                      wsConfig As Worksheet) As Long
+    Dim colSalva As String: colSalva = LerConfigTabela(wsConfig, nomeAba, "COLUNA_PRECO")
+    Dim opts As String, i As Long, p() As String
+    opts = "Tabela: " & nomeAba & vbCrLf & vbCrLf & "Selecione o numero do preco:" & vbCrLf & vbCrLf
+    For i = 0 To UBound(colunasPreco)
+        p = Split(colunasPreco(i), "|")
+        opts = opts & (i + 1) & " - " & p(0) & vbCrLf
+    Next i
+    Dim sug As String: sug = "1"
+    If colSalva <> "" Then
+        For i = 0 To UBound(colunasPreco)
+            p = Split(colunasPreco(i), "|")
+            If p(1) = colSalva Then sug = CStr(i + 1)
+        Next i
+    End If
+    Dim resp As String: resp = InputBox(opts, "Selecionar Preco - " & nomeAba, sug)
+    If resp = "" Or Not IsNumeric(resp) Then
+        EscolherColunaPreco = CLng(Split(colunasPreco(0), "|")(1)): Exit Function
+    End If
+    Dim idx As Long: idx = CInt(resp) - 1
+    If idx < 0 Or idx > UBound(colunasPreco) Then idx = 0
+    Dim pe() As String: pe = Split(colunasPreco(idx), "|")
+    Dim col As Long: col = CLng(pe(1))
+    SalvarConfigTabela wsConfig, nomeAba, "COLUNA_PRECO", CStr(col)
+    EscolherColunaPreco = col
+End Function
+
+Private Sub ProcessarAba(ws As Worksheet, wsConfig As Worksheet, _
+                          dataInicial As String, pastaDestino As String)
+    Dim codTab As String, colCod As Long, colPreco As Long
+    Dim colsPreco As Variant, lastRow As Long, r As Long
+    Dim codProd As Variant, valPreco As Variant, precoFmt As String
+    Dim csvTxt As String, nomeArq As String, fn As Integer, cnt As Long
+
+    codTab = ExtrairCodigoTabela(ws.Name, wsConfig)
+    If codTab = "" Then MsgBox "Aba " & Chr(34) & ws.Name & Chr(34) & " ignorada.", vbInformation: Exit Sub
+
+    colCod = ObterColunaCodigoProduto(codTab, ws.Name, ws, wsConfig)
+    colsPreco = IdentificarColunasPreco(ws)
+    If UBound(colsPreco) = 0 Then
+        colPreco = CLng(Split(colsPreco(0), "|")(1))
+    Else
+        colPreco = EscolherColunaPreco(colsPreco, ws.Name, wsConfig)
+    End If
+
+    lastRow = ws.UsedRange.row + ws.UsedRange.Rows.Count - 1
+    csvTxt = "1;" & codTab & vbCrLf
+    cnt = 0
+
+    For r = 6 To lastRow
+        codProd = ws.Cells(r, colCod).Value
+        If Not EhCodigoProduto(codProd) Then GoTo Skip
+        valPreco = ws.Cells(r, colPreco).Value
+        If Not EhPrecoValido(valPreco) Then GoTo Skip
+        precoFmt = Replace(Format(CDbl(Trim(CStr(valPreco))), "0.00"), ".", ",")
+        csvTxt = csvTxt & "2;" & dataInicial & ";" & Trim(CStr(codProd)) & ";U;" & _
+                 precoFmt & ";A;9.999.999,00" & vbCrLf
+        cnt = cnt + 1
+Skip:
+    Next r
+
+    If cnt = 0 Then MsgBox "Aba " & Chr(34) & ws.Name & Chr(34) & ": sem produtos.", vbInformation: Exit Sub
+
+    nomeArq = pastaDestino & "tabela_" & codTab & ".csv"
+    fn = FreeFile
+    Open nomeArq For Output As #fn
+    Print #fn, Left(csvTxt, Len(csvTxt) - 2)
+    Close #fn
+    Debug.Print "OK: " & nomeArq & " (" & cnt & " produtos)"
+End Sub
+
+Private Function ObterOuCriarAbaConfig(wb As Workbook) As Worksheet
+    Dim ws As Worksheet
+    On Error Resume Next: Set ws = wb.Worksheets(ABA_CONFIG): On Error GoTo 0
+    If ws Is Nothing Then
+        Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+        ws.Name = ABA_CONFIG: ws.Visible = xlSheetVeryHidden
+        ws.Cells(1, 1).Value = "NomeAba"
+        ws.Cells(1, 2).Value = "Chave"
+        ws.Cells(1, 3).Value = "Valor"
+    End If
+    Set ObterOuCriarAbaConfig = ws
+End Function
+
+Private Function LerConfigTabela(wsConfig As Worksheet, nomeAba As String, chave As String) As String
+    Dim lr As Long, i As Long
+    lr = wsConfig.UsedRange.row + wsConfig.UsedRange.Rows.Count - 1
+    For i = 2 To lr
+        If wsConfig.Cells(i, 1).Value = nomeAba And wsConfig.Cells(i, 2).Value = chave Then
+            LerConfigTabela = CStr(wsConfig.Cells(i, 3).Value): Exit Function
+        End If
+    Next i
+    LerConfigTabela = ""
+End Function
+
+Private Sub SalvarConfigTabela(wsConfig As Worksheet, nomeAba As String, chave As String, valor As String)
+    Dim lr As Long, i As Long
+    lr = wsConfig.UsedRange.row + wsConfig.UsedRange.Rows.Count - 1
+    For i = 2 To lr
+        If wsConfig.Cells(i, 1).Value = nomeAba And wsConfig.Cells(i, 2).Value = chave Then
+            wsConfig.Cells(i, 3).Value = valor: Exit Sub
+        End If
+    Next i
+    wsConfig.Cells(lr + 1, 1).Value = nomeAba
+    wsConfig.Cells(lr + 1, 2).Value = chave
+    wsConfig.Cells(lr + 1, 3).Value = valor
+End Sub
+
