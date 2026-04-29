@@ -1,9 +1,13 @@
 '==============================================================================
-' MODULO: ExportarTabelasPreco  |  VERSAO: 3.0  |  DATA: 24/03/2026
+' MODULO: ExportarTabelasPreco  |  VERSAO: 3.1  |  DATA: 29/04/2026
 ' CORRECAO v3.0:
 '   - ListBox vazio: ctrl.AddItem no Designer perde os itens ao instanciar.
 '   - Solucao: nomes das abas passados via g_NomesAbas (global) e carregados
 '     no UserForm_Initialize, que roda apos a instanciacao do formulario.
+' NOVO v3.1:
+'   - Solicita % de TOLERANCIA MENOR e % de TOLERANCIA MAIOR via InputBox
+'     antes da exportacao. Valores sao incluidos na linha CSV apos o preco
+'     e antes do bloco ";A;9.999.999,00".
 '==============================================================================
 Option Explicit
 
@@ -50,6 +54,27 @@ Public Sub ExportarTabelas()
     If Not IsDate(dataInicial) Then MsgBox "Data invalida. Use DD/MM/AAAA.", vbExclamation: Exit Sub
     dataInicial = Format(CDate(dataInicial), "DD/MM/YYYY")
 
+    Dim tolMenor As String, tolMaior As String, tolNum As Double
+    tolMenor = InputBox("Informe o % de TOLERANCIA MENOR:" & vbCrLf & _
+                        "(use virgula como separador decimal, ex: 30,00)", _
+                        "Tolerancia Menor", "0,00")
+    If tolMenor = "" Then MsgBox "Exportacao cancelada.", vbInformation: Exit Sub
+    If Not IsNumeric(tolMenor) Then
+        MsgBox "Tolerancia menor invalida. Use formato numerico (ex: 30,00).", vbExclamation: Exit Sub
+    End If
+    tolNum = CDbl(tolMenor)
+    tolMenor = Replace(Format(tolNum, "0.00"), ".", ",")
+
+    tolMaior = InputBox("Informe o % de TOLERANCIA MAIOR:" & vbCrLf & _
+                        "(use virgula como separador decimal, ex: 40,00)", _
+                        "Tolerancia Maior", "0,00")
+    If tolMaior = "" Then MsgBox "Exportacao cancelada.", vbInformation: Exit Sub
+    If Not IsNumeric(tolMaior) Then
+        MsgBox "Tolerancia maior invalida. Use formato numerico (ex: 40,00).", vbExclamation: Exit Sub
+    End If
+    tolNum = CDbl(tolMaior)
+    tolMaior = Replace(Format(tolNum, "0.00"), ".", ",")
+
     g_Cancelado = True
     g_SelCnt = 0
     ReDim g_Selecionadas(0)
@@ -83,7 +108,7 @@ Public Sub ExportarTabelas()
         If nomeAba = "" Then GoTo ProxSel
         On Error GoTo ErroAba
         Set ws = wb.Worksheets(nomeAba)
-        ProcessarAba ws, wsConfig, dataInicial, pastaDestino
+        ProcessarAba ws, wsConfig, dataInicial, pastaDestino, tolMenor, tolMaior
         tabelasProcessadas = tabelasProcessadas + 1
         GoTo ProxSel
 ErroAba:
@@ -346,7 +371,8 @@ Private Function EscolherColunaPreco(colunasPreco As Variant, nomeAba As String,
 End Function
 
 Private Sub ProcessarAba(ws As Worksheet, wsConfig As Worksheet, _
-                          dataInicial As String, pastaDestino As String)
+                          dataInicial As String, pastaDestino As String, _
+                          tolMenor As String, tolMaior As String)
     Dim codTab As String, colCod As Long, colPreco As Long
     Dim colsPreco As Variant, lastRow As Long, r As Long
     Dim codProd As Variant, valPreco As Variant, precoFmt As String
@@ -374,7 +400,7 @@ Private Sub ProcessarAba(ws As Worksheet, wsConfig As Worksheet, _
         If Not EhPrecoValido(valPreco) Then GoTo Skip
         precoFmt = Replace(Format(CDbl(Trim(CStr(valPreco))), "0.00"), ".", ",")
         csvTxt = csvTxt & "2;" & dataInicial & ";" & Trim(CStr(codProd)) & ";U;" & _
-                 precoFmt & ";A;9.999.999,00" & vbCrLf
+                 precoFmt & ";" & tolMenor & ";" & tolMaior & ";A;9.999.999,00" & vbCrLf
         cnt = cnt + 1
 Skip:
     Next r
