@@ -52,7 +52,8 @@ Sub SELECIONAR_ABAS_E_SALVAR()
     If selecionadas.Count = 0 Then
         MsgBox "Nenhuma aba foi marcada com 'X' na coluna A da aba '" & _
                NOME_ABA_SELECAO & "'." & vbCrLf & vbCrLf & _
-               "Marque as abas desejadas e execute a macro novamente." & vbCrLf & _
+               "Marque as abas desejadas (ou use o botão 'Marcar Todas') e " & _
+               "clique em 'Exportar Marcadas'." & vbCrLf & _
                "Para recriar a lista, exclua a aba '" & NOME_ABA_SELECAO & _
                "' e execute a macro.", _
                vbExclamation, "Nada a exportar"
@@ -149,13 +150,78 @@ Private Sub CriarAbaSelecao()
         .Range("A4").Select
     End With
 
+    ' Botões na própria aba para acionar a exportação ou marcar/desmarcar tudo
+    Call AdicionarBotoesSelecao(selecao)
+
     selecao.Activate
     Application.ScreenUpdating = True
 
     MsgBox total & " aba(s) com 'Tabela' no nome foram listadas." & vbCrLf & vbCrLf & _
            "1) Marque com 'X' na coluna A as abas que deseja exportar." & vbCrLf & _
-           "2) Execute a macro novamente para gerar os arquivos .xlsx.", _
+           "2) Clique no botão 'Exportar Marcadas' no topo da aba.", _
            vbInformation, "Seleção de Abas"
+End Sub
+
+' Adiciona botões de Forms na aba auxiliar:
+'  - Exportar Marcadas: chama a própria SELECIONAR_ABAS_E_SALVAR
+'  - Marcar Todas / Desmarcar Todas: utilitários de preenchimento da coluna A
+Private Sub AdicionarBotoesSelecao(selecao As Worksheet)
+    Dim btnExportar As Object
+    Dim btnMarcar As Object
+    Dim btnDesmarcar As Object
+    Dim topo As Double, alt As Double
+
+    ' Posiciona os botões logo abaixo do título (linha 1) e acima do cabeçalho (linha 3)
+    topo = selecao.Rows(1).Top + selecao.Rows(1).Height + 2
+    alt = 22
+
+    Set btnExportar = selecao.Buttons.Add( _
+        selecao.Columns("A").Left, topo, 160, alt)
+    With btnExportar
+        .OnAction = "SELECIONAR_ABAS_E_SALVAR"
+        .Caption = "Exportar Marcadas"
+        .Name = "btnExportar"
+    End With
+
+    Set btnMarcar = selecao.Buttons.Add( _
+        btnExportar.Left + btnExportar.Width + 6, topo, 110, alt)
+    With btnMarcar
+        .OnAction = "MARCAR_TODAS"
+        .Caption = "Marcar Todas"
+        .Name = "btnMarcar"
+    End With
+
+    Set btnDesmarcar = selecao.Buttons.Add( _
+        btnMarcar.Left + btnMarcar.Width + 6, topo, 130, alt)
+    With btnDesmarcar
+        .OnAction = "DESMARCAR_TODAS"
+        .Caption = "Desmarcar Todas"
+        .Name = "btnDesmarcar"
+    End With
+End Sub
+
+' Marca todas as linhas da coluna A com "X" na aba auxiliar.
+Sub MARCAR_TODAS()
+    Call PreencherColunaSelecao("X")
+End Sub
+
+' Limpa todas as marcações da coluna A na aba auxiliar.
+Sub DESMARCAR_TODAS()
+    Call PreencherColunaSelecao("")
+End Sub
+
+Private Sub PreencherColunaSelecao(valor As String)
+    Dim selecao As Worksheet
+    On Error Resume Next
+    Set selecao = ThisWorkbook.Sheets(NOME_ABA_SELECAO)
+    On Error GoTo 0
+    If selecao Is Nothing Then Exit Sub
+
+    Dim ultimaLinha As Long
+    ultimaLinha = selecao.Cells(selecao.Rows.Count, 2).End(xlUp).row
+    If ultimaLinha < 4 Then Exit Sub
+
+    selecao.Range(selecao.Cells(4, 1), selecao.Cells(ultimaLinha, 1)).Value = valor
 End Sub
 
 Function SheetExists(SheetName As String) As Boolean
