@@ -1,111 +1,161 @@
+' Nome da aba auxiliar usada para a seleção das abas a exportar.
+' Mantida como constante para facilitar manutenção e evitar colisões.
+Public Const NOME_ABA_SELECAO As String = "_Selecao_Exportacao"
+
+' Esta macro funciona em DUAS execuções:
+'   1ª execução: varre TODAS as abas do arquivo cujo nome contém "Tabela"
+'                e cria a aba auxiliar listando-as. O usuário marca com "X"
+'                na coluna A as abas que deseja exportar.
+'   2ª execução: lê os "X" da aba auxiliar, exporta as abas marcadas e
+'                remove a aba auxiliar.
+'
+' A fonte da lista é o próprio workbook (ThisWorkbook.Worksheets), e não
+' a aba "Sumário". Assim, qualquer aba que contenha "Tabela" no nome fica
+' disponível para exportação, independentemente do Sumário.
 Sub SELECIONAR_ABAS_E_SALVAR()
     Dim ws As Worksheet
-    Dim Sumario As Worksheet
-    Dim PossiveisAbas As Object
+    Dim selecao As Worksheet
     Dim selecionadas As Object
-    Dim AbaEscolhida As String
-    Dim i As Integer, NumAba As Integer
-    Dim Escolhas As Variant
-    Dim Aba As Variant
-    Dim ultimaLinha As Long
-    Dim ListaAbasOrdenadas As Collection
-    Dim nomeDaAba As String ' Variável para facilitar a leitura
+    Dim i As Long
 
-    ' Definir aba Sumário
-    Set Sumario = ThisWorkbook.Sheets("Sumário")
+    ' Verifica se a aba auxiliar de seleção já existe
+    On Error Resume Next
+    Set selecao = ThisWorkbook.Sheets(NOME_ABA_SELECAO)
+    On Error GoTo 0
 
-    ' Criar dicionário com abas disponíveis
-    Set PossiveisAbas = CreateObject("Scripting.Dictionary")
-
-    ' Determinar última linha da coluna A a partir da linha 4
-    ultimaLinha = Sumario.Cells(Rows.Count, 1).End(xlUp).row
-
-    '--------------------------------------------------------------------
-    ' BLOCO MODIFICADO - Início
-    '--------------------------------------------------------------------
-    ' Preencher dicionário com nomes de abas que contêm a palavra "Tabela"
-    For i = 4 To ultimaLinha
-        nomeDaAba = Trim(Sumario.Cells(i, 1).Value)
-        
-        ' Adicionar à lista APENAS se não for vazio E contiver "Tabela" (não diferencia maiúsculas/minúsculas)
-        If nomeDaAba <> "" And InStr(1, nomeDaAba, "Tabela", vbTextCompare) > 0 Then
-            PossiveisAbas.Add nomeDaAba, True
-        End If
-    Next i
-    '--------------------------------------------------------------------
-    ' BLOCO MODIFICADO - Fim
-    '--------------------------------------------------------------------
-
-    ' Verificar se alguma aba foi encontrada
-    If PossiveisAbas.Count = 0 Then
-        MsgBox "Nenhuma aba contendo a palavra 'Tabela' foi encontrada na lista da planilha 'Sumário'.", vbInformation, "Nenhuma Aba Encontrada"
+    If selecao Is Nothing Then
+        ' --------------------------------------------------------------
+        ' 1ª EXECUÇÃO: criar a aba auxiliar com todas as abas "Tabela*"
+        ' --------------------------------------------------------------
+        Call CriarAbaSelecao
         Exit Sub
     End If
 
-    ' Preparar lista ordenada por número de tabela extraído do nome
-    Set ListaAbasOrdenadas = New Collection
-    Dim TempDict As Object
-    Set TempDict = CreateObject("Scripting.Dictionary")
+    ' ------------------------------------------------------------------
+    ' 2ª EXECUÇÃO: ler os "X" e exportar as abas marcadas
+    ' ------------------------------------------------------------------
+    Set selecionadas = CreateObject("Scripting.Dictionary")
 
-    For Each Aba In PossiveisAbas.Keys
-        Dim NumTabela As Long
-        If Len(Aba) >= 11 Then
-            NumTabela = Val(Mid(Aba, 8, 4))
-        Else
-            NumTabela = 0
+    Dim ultimaLinha As Long
+    ultimaLinha = selecao.Cells(selecao.Rows.Count, 2).End(xlUp).row
+
+    For i = 4 To ultimaLinha
+        If UCase(Trim(CStr(selecao.Cells(i, 1).Value))) = "X" Then
+            Dim nomeAba As String
+            nomeAba = Trim(CStr(selecao.Cells(i, 2).Value))
+            If nomeAba <> "" And Not selecionadas.Exists(nomeAba) Then
+                selecionadas.Add nomeAba, True
+            End If
         End If
-        TempDict.Add Aba, NumTabela
-    Next Aba
+    Next i
 
-    ' Copiar itens para vetor
+    If selecionadas.Count = 0 Then
+        MsgBox "Nenhuma aba foi marcada com 'X' na coluna A da aba '" & _
+               NOME_ABA_SELECAO & "'." & vbCrLf & vbCrLf & _
+               "Marque as abas desejadas e execute a macro novamente." & vbCrLf & _
+               "Para recriar a lista, exclua a aba '" & NOME_ABA_SELECAO & _
+               "' e execute a macro.", _
+               vbExclamation, "Nada a exportar"
+        Exit Sub
+    End If
+
+    ' Exportar cada aba marcada
+    Dim exportadas As Long
+    exportadas = 0
+    For Each ws In ThisWorkbook.Sheets
+        If selecionadas.Exists(ws.Name) Then
+            Call Salvar_Excel(ws)
+            exportadas = exportadas + 1
+        End If
+    Next ws
+
+    ' Remove a aba auxiliar após a exportação
+    Application.DisplayAlerts = False
+    selecao.Delete
+    Application.DisplayAlerts = True
+
+    MsgBox exportadas & " aba(s) exportada(s) com sucesso.", _
+           vbInformation, "Concluído"
+End Sub
+
+' Cria a aba auxiliar listando todas as abas do arquivo cujo nome contém
+' "Tabela". A lista é ordenada pelo número extraído do nome (quando aplicável).
+Private Sub CriarAbaSelecao()
+    Dim ws As Worksheet
+    Dim selecao As Worksheet
     Dim AbaNomes() As String
-    ReDim AbaNomes(1 To TempDict.Count)
-    i = 1
-    For Each Aba In TempDict.Keys
-        AbaNomes(i) = Aba
-        i = i + 1
-    Next Aba
+    Dim NumTabelas() As Long
+    Dim total As Long
+    Dim i As Long, j As Long
 
-    ' Ordenar vetor pelo número da tabela
-    Dim j As Integer
-    For i = LBound(AbaNomes) To UBound(AbaNomes) - 1
-        For j = i + 1 To UBound(AbaNomes)
-            If TempDict(AbaNomes(i)) > TempDict(AbaNomes(j)) Then
-                Dim tmp As String
-                tmp = AbaNomes(i)
-                AbaNomes(i) = AbaNomes(j)
-                AbaNomes(j) = tmp
+    ' Coleta todas as abas que contêm "Tabela" no nome
+    total = 0
+    ReDim AbaNomes(1 To ThisWorkbook.Worksheets.Count)
+    ReDim NumTabelas(1 To ThisWorkbook.Worksheets.Count)
+
+    For Each ws In ThisWorkbook.Worksheets
+        If InStr(1, ws.Name, "Tabela", vbTextCompare) > 0 Then
+            total = total + 1
+            AbaNomes(total) = ws.Name
+            ' Mantém compatibilidade com a ordenação anterior (Mid(name, 8, 4))
+            If Len(ws.Name) >= 11 Then
+                NumTabelas(total) = Val(Mid(ws.Name, 8, 4))
+            Else
+                NumTabelas(total) = 0
+            End If
+        End If
+    Next ws
+
+    If total = 0 Then
+        MsgBox "Nenhuma aba contendo a palavra 'Tabela' foi encontrada neste arquivo.", _
+               vbInformation, "Nenhuma Aba Encontrada"
+        Exit Sub
+    End If
+
+    ' Ordena por número da tabela (bubble sort simples; lista pequena)
+    For i = 1 To total - 1
+        For j = i + 1 To total
+            If NumTabelas(i) > NumTabelas(j) Or _
+               (NumTabelas(i) = NumTabelas(j) And StrComp(AbaNomes(i), AbaNomes(j), vbTextCompare) > 0) Then
+                Dim tmpNum As Long
+                Dim tmpNome As String
+                tmpNum = NumTabelas(i) : NumTabelas(i) = NumTabelas(j) : NumTabelas(j) = tmpNum
+                tmpNome = AbaNomes(i) : AbaNomes(i) = AbaNomes(j) : AbaNomes(j) = tmpNome
             End If
         Next j
     Next i
 
-    ' Criar menu de seleção
-    Dim Opcoes As String
-    For i = LBound(AbaNomes) To UBound(AbaNomes)
-        ListaAbasOrdenadas.Add AbaNomes(i)
-        Opcoes = Opcoes & i & " - " & AbaNomes(i) & vbCrLf
-    Next i
+    ' Cria a aba auxiliar
+    Application.ScreenUpdating = False
+    Set selecao = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+    selecao.Name = NOME_ABA_SELECAO
 
-    AbaEscolhida = InputBox("Digite os números das abas que deseja salvar, separados por vírgula:" & vbCrLf & Opcoes, "Seleção de Abas")
-    If AbaEscolhida = "" Then Exit Sub
+    With selecao
+        .Range("A1").Value = "Marque com 'X' na coluna A as abas que deseja exportar e execute a macro novamente."
+        .Range("A1").Font.Bold = True
+        .Range("A1:D1").Merge
 
-    Escolhas = Split(AbaEscolhida, ",")
+        .Range("A3").Value = "Marcar (X)"
+        .Range("B3").Value = "Nome da Aba"
+        .Range("A3:B3").Font.Bold = True
+        .Range("A3:B3").Interior.Color = RGB(220, 230, 241)
 
-    ' Criar dicionário de abas selecionadas
-    Set selecionadas = CreateObject("Scripting.Dictionary")
-    For i = LBound(Escolhas) To UBound(Escolhas)
-        NumAba = Val(Trim(Escolhas(i)))
-        If NumAba >= 1 And NumAba <= ListaAbasOrdenadas.Count Then
-            selecionadas.Add ListaAbasOrdenadas(NumAba), True
-        End If
-    Next i
+        For i = 1 To total
+            .Cells(i + 3, 2).Value = AbaNomes(i)
+        Next i
 
-    ' Executar salvamento
-    For Each ws In ThisWorkbook.Sheets
-        If selecionadas.Exists(ws.Name) Then
-            Call Salvar_Excel(ws)
-        End If
-    Next ws
+        .Columns("A").ColumnWidth = 12
+        .Columns("B").AutoFit
+        .Range("A4").Select
+    End With
+
+    selecao.Activate
+    Application.ScreenUpdating = True
+
+    MsgBox total & " aba(s) com 'Tabela' no nome foram listadas." & vbCrLf & vbCrLf & _
+           "1) Marque com 'X' na coluna A as abas que deseja exportar." & vbCrLf & _
+           "2) Execute a macro novamente para gerar os arquivos .xlsx.", _
+           vbInformation, "Seleção de Abas"
 End Sub
 
 Function SheetExists(SheetName As String) As Boolean
