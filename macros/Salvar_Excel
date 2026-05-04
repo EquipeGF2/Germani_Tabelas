@@ -1,0 +1,271 @@
+Sub SELECIONAR_ABAS_E_SALVAR()
+    Dim ws As Worksheet
+    Dim Sumario As Worksheet
+    Dim PossiveisAbas As Object
+    Dim selecionadas As Object
+    Dim AbaEscolhida As String
+    Dim i As Integer, NumAba As Integer
+    Dim Escolhas As Variant
+    Dim Aba As Variant
+    Dim ultimaLinha As Long
+    Dim ListaAbasOrdenadas As Collection
+    Dim nomeDaAba As String ' Variável para facilitar a leitura
+
+    ' Definir aba Sumário
+    Set Sumario = ThisWorkbook.Sheets("Sumário")
+
+    ' Criar dicionário com abas disponíveis
+    Set PossiveisAbas = CreateObject("Scripting.Dictionary")
+
+    ' Determinar última linha da coluna A a partir da linha 4
+    ultimaLinha = Sumario.Cells(Rows.Count, 1).End(xlUp).row
+
+    '--------------------------------------------------------------------
+    ' BLOCO MODIFICADO - Início
+    '--------------------------------------------------------------------
+    ' Preencher dicionário com nomes de abas que contêm a palavra "Tabela"
+    For i = 4 To ultimaLinha
+        nomeDaAba = Trim(Sumario.Cells(i, 1).Value)
+        
+        ' Adicionar à lista APENAS se não for vazio E contiver "Tabela" (não diferencia maiúsculas/minúsculas)
+        If nomeDaAba <> "" And InStr(1, nomeDaAba, "Tabela", vbTextCompare) > 0 Then
+            PossiveisAbas.Add nomeDaAba, True
+        End If
+    Next i
+    '--------------------------------------------------------------------
+    ' BLOCO MODIFICADO - Fim
+    '--------------------------------------------------------------------
+
+    ' Verificar se alguma aba foi encontrada
+    If PossiveisAbas.Count = 0 Then
+        MsgBox "Nenhuma aba contendo a palavra 'Tabela' foi encontrada na lista da planilha 'Sumário'.", vbInformation, "Nenhuma Aba Encontrada"
+        Exit Sub
+    End If
+
+    ' Preparar lista ordenada por número de tabela extraído do nome
+    Set ListaAbasOrdenadas = New Collection
+    Dim TempDict As Object
+    Set TempDict = CreateObject("Scripting.Dictionary")
+
+    For Each Aba In PossiveisAbas.Keys
+        Dim NumTabela As Long
+        If Len(Aba) >= 11 Then
+            NumTabela = Val(Mid(Aba, 8, 4))
+        Else
+            NumTabela = 0
+        End If
+        TempDict.Add Aba, NumTabela
+    Next Aba
+
+    ' Copiar itens para vetor
+    Dim AbaNomes() As String
+    ReDim AbaNomes(1 To TempDict.Count)
+    i = 1
+    For Each Aba In TempDict.Keys
+        AbaNomes(i) = Aba
+        i = i + 1
+    Next Aba
+
+    ' Ordenar vetor pelo número da tabela
+    Dim j As Integer
+    For i = LBound(AbaNomes) To UBound(AbaNomes) - 1
+        For j = i + 1 To UBound(AbaNomes)
+            If TempDict(AbaNomes(i)) > TempDict(AbaNomes(j)) Then
+                Dim tmp As String
+                tmp = AbaNomes(i)
+                AbaNomes(i) = AbaNomes(j)
+                AbaNomes(j) = tmp
+            End If
+        Next j
+    Next i
+
+    ' Criar menu de seleção
+    Dim Opcoes As String
+    For i = LBound(AbaNomes) To UBound(AbaNomes)
+        ListaAbasOrdenadas.Add AbaNomes(i)
+        Opcoes = Opcoes & i & " - " & AbaNomes(i) & vbCrLf
+    Next i
+
+    AbaEscolhida = InputBox("Digite os números das abas que deseja salvar, separados por vírgula:" & vbCrLf & Opcoes, "Seleção de Abas")
+    If AbaEscolhida = "" Then Exit Sub
+
+    Escolhas = Split(AbaEscolhida, ",")
+
+    ' Criar dicionário de abas selecionadas
+    Set selecionadas = CreateObject("Scripting.Dictionary")
+    For i = LBound(Escolhas) To UBound(Escolhas)
+        NumAba = Val(Trim(Escolhas(i)))
+        If NumAba >= 1 And NumAba <= ListaAbasOrdenadas.Count Then
+            selecionadas.Add ListaAbasOrdenadas(NumAba), True
+        End If
+    Next i
+
+    ' Executar salvamento
+    For Each ws In ThisWorkbook.Sheets
+        If selecionadas.Exists(ws.Name) Then
+            Call Salvar_Excel(ws)
+        End If
+    Next ws
+End Sub
+
+Function SheetExists(SheetName As String) As Boolean
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets(SheetName)
+    SheetExists = Not ws Is Nothing
+    Set ws = Nothing
+    On Error GoTo 0
+End Function
+
+
+Sub QuickSort(arr As Variant, first As Long, last As Long)
+    Dim pivot As Variant, i As Long, j As Long, temp As Variant
+    If first >= last Then Exit Sub
+    pivot = arr((first + last) \ 2)
+    i = first
+    j = last
+    Do
+        Do While arr(i) < pivot: i = i + 1: Loop
+        Do While arr(j) > pivot: j = j - 1: Loop
+        If i <= j Then
+            temp = arr(i)
+            arr(i) = arr(j)
+            arr(j) = temp
+            i = i + 1
+            j = j - 1
+        End If
+    Loop While i <= j
+    Call QuickSort(arr, first, j)
+    Call QuickSort(arr, i, last)
+End Sub
+
+
+Sub Salvar_Excel(ws As Worksheet)
+    Dim Pasta As Object
+    Dim CaminhoBase As String
+    Dim PastaDaTabela As String ' <<< ALTERAÇÃO: Nova variável para a pasta da tabela
+    Dim NomeBaseTabela As String ' <<< ALTERAÇÃO: Nova variável para o nome limpo
+    Dim NomeArquivoFinal As String ' <<< ALTERAÇÃO: Nova variável para o nome do arquivo com data
+    Dim CaminhoCompleto As String
+    Dim NovoWB As Workbook
+    Dim wsDestino As Worksheet
+    Dim wbAberto As Workbook
+    Dim intervalo As Range
+
+    ' <<< ALTERAÇÃO: Validação inicial e definição do nome base a partir de C1
+    ' Usamos a função para remover caracteres inválidos que podem quebrar a criação de pastas/arquivos.
+    NomeBaseTabela = RemoverCaracteresInvalidos(Trim(ws.Range("C1").Value))
+    If NomeBaseTabela = "" Then
+        MsgBox "Erro: A célula C1 está vazia na aba '" & ws.Name & "'. A planilha não foi salva.", vbExclamation, "Operação Cancelada"
+        Exit Sub
+    End If
+    
+    ' Criar objeto para manipular pastas
+    Set Pasta = CreateObject("scripting.FileSystemObject")
+    
+    ' <<< ALTERAÇÃO: Lógica de criação de pastas e arquivos
+    ' 1. Define a pasta principal "TABELAS_EXCEL"
+    CaminhoBase = ThisWorkbook.Path & "\" & "TABELAS_EXCEL"
+    If Not Pasta.FolderExists(CaminhoBase) Then
+        Pasta.CreateFolder CaminhoBase
+    End If
+    
+    ' 2. Define e cria a subpasta com o nome da tabela
+    PastaDaTabela = CaminhoBase & "\" & NomeBaseTabela
+    If Not Pasta.FolderExists(PastaDaTabela) Then
+        Pasta.CreateFolder PastaDaTabela
+    End If
+    
+    ' 3. Define o nome final do arquivo (com data) e o caminho completo
+    NomeArquivoFinal = NomeBaseTabela & "_" & Format(Date, "yyyy-mm-dd") & ".xlsx"
+    CaminhoCompleto = PastaDaTabela & "\" & NomeArquivoFinal
+    
+    ' Verificar se o arquivo está aberto e fechá-lo se necessário
+    On Error Resume Next
+    ' <<< ALTERAÇÃO: Usa o novo nome de arquivo final para verificar
+    Set wbAberto = Workbooks(NomeArquivoFinal)
+    If Not wbAberto Is Nothing Then
+        wbAberto.Close SaveChanges:=False
+    End If
+    On Error GoTo 0
+    
+    ' Verificar se o arquivo já existe e tentar apagá-lo (para garantir a substituição)
+    If Dir(CaminhoCompleto) <> "" Then
+        On Error Resume Next
+        Kill CaminhoCompleto
+        If Err.Number <> 0 Then
+            MsgBox "Não foi possível substituir o arquivo existente: " & vbCrLf & CaminhoCompleto & vbCrLf & "Ele pode estar em uso ou você não tem permissão.", vbExclamation, "Erro ao Salvar"
+            Exit Sub
+        End If
+        On Error GoTo 0
+    End If
+
+    ' Desativar atualizações da tela e alertas
+    Application.ScreenUpdating = False
+    
+    ' --- O restante do seu código para copiar, colar valores e quebrar vínculos permanece o mesmo ---
+    
+    ' Criar novo arquivo e copiar a planilha específica
+    Set NovoWB = Workbooks.Add(xlWBATWorksheet)
+    ws.Copy After:=NovoWB.Sheets(NovoWB.Sheets.Count)
+    
+    ' Definir a planilha copiada
+    Set wsDestino = NovoWB.Sheets(NovoWB.Sheets.Count)
+    
+    ' Remover a planilha extra criada pelo Workbooks.Add
+    Application.DisplayAlerts = False
+    NovoWB.Sheets(1).Delete
+    Application.DisplayAlerts = True
+    
+    ' Definir intervalo entre as colunas C e P, da linha 7 até a última linha preenchida
+    ' Corrigido para garantir que a última linha seja da planilha de origem (ws)
+    On Error Resume Next
+    Set intervalo = ws.Range("C7:P" & ws.Cells(ws.Rows.Count, "C").End(xlUp).row)
+    On Error GoTo 0
+
+    If Not intervalo Is Nothing Then
+        ' Copiar o intervalo
+        intervalo.Copy
+        
+        ' Colar os valores na nova planilha (convertendo fórmulas para valores)
+        wsDestino.Range("C7").PasteSpecial Paste:=xlPasteValues
+        Application.CutCopyMode = False ' Limpa a área de transferência
+    End If
+
+    ' Quebrar os vínculos existentes
+    Dim myLinks As Variant
+    myLinks = NovoWB.LinkSources(Type:=xlLinkTypeExcelLinks)
+    If Not IsEmpty(myLinks) Then
+        Dim linkIndex As Integer
+        For linkIndex = 1 To UBound(myLinks)
+            NovoWB.BreakLink Name:=myLinks(linkIndex), Type:=xlLinkTypeExcelLinks
+        Next linkIndex
+    End If
+
+    ' Salvar o novo arquivo sem perguntar sobre substituição
+    Application.DisplayAlerts = False
+    NovoWB.SaveAs Filename:=CaminhoCompleto, FileFormat:=xlOpenXMLWorkbook
+    Application.DisplayAlerts = True
+
+    ' Fechar e limpar
+    NovoWB.Close SaveChanges:=False
+
+    ' Restaurar configurações
+    Application.ScreenUpdating = True
+    
+End Sub
+
+' --- FUNÇÃO AUXILIAR ---
+' Certifique-se de que esta função também está no seu módulo
+' para que a macro Salvar_Excel funcione corretamente.
+Function RemoverCaracteresInvalidos(nome As String) As String
+    Dim i As Integer
+    Dim CaracteresInvalidos As String
+    CaracteresInvalidos = "\/:*?""<>|"
+
+    For i = 1 To Len(CaracteresInvalidos)
+        nome = Replace(nome, Mid(CaracteresInvalidos, i, 1), "_")
+    Next i
+    
+    RemoverCaracteresInvalidos = Trim(nome)
+End Function
